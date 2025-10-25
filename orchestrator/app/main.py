@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
-from app.config import settings
+from . import saga_routes, settings
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -14,6 +14,8 @@ app = FastAPI(
     version=settings.VERSION,
     description="Saga Orchestrator",
 )
+
+app.include_router(saga_routes.router)
 
 
 @app.get("/")

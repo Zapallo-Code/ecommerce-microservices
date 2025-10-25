@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -31,8 +31,8 @@ class TransactionState(BaseModel):
     product_id: str | None = None
     payment_id: str | None = None
     inventory_updated: bool = False
-    transaction_registered: bool = False
+    purchase_registered: bool = False
     amount: float
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime
     completed_at: datetime | None = None
     error_message: str | None = None
