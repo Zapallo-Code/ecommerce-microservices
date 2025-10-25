@@ -13,6 +13,9 @@ WORKDIR /app/
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.3 /uv /uvx /bin/
 
+# Create non-root user
+RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
+
 # Install dependencies (cacheable layer)
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -27,5 +30,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-dev
+
+# Switch to a non-root user
+USER appuser
 
 CMD ["fastapi", "run", "--workers", "4", "app/main.py"]
