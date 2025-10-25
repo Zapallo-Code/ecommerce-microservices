@@ -1,7 +1,9 @@
 import asyncio
 import logging
 
-from . import ServiceClient, TransactionState
+from app.models import TransactionState
+
+from .http_client import ServiceClient
 
 logger = logging.getLogger(__name__)
 

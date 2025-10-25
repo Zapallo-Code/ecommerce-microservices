@@ -4,7 +4,7 @@ import logging
 import httpx
 from fastapi import HTTPException, status
 
-from . import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 

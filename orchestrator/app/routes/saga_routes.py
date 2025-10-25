@@ -16,9 +16,9 @@ saga_service = SagaService()
 
 
 @router.post(
-    "/purchase", response_model=TransactionResponse, status_code=status.HTTP_200_OK
+    "/transaction", response_model=TransactionResponse, status_code=status.HTTP_200_OK
 )
-async def initiate_purchase(request: TransactionRequest) -> TransactionResponse:
+async def initiate_transaction(request: TransactionRequest) -> TransactionResponse:
     try:
         transaction = await saga_service.execute_saga(request)
 

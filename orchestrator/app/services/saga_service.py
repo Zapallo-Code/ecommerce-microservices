@@ -2,14 +2,11 @@ import logging
 import uuid
 from datetime import datetime
 
-from . import (
-    CompensationService,
-    ServiceClient,
-    TransactionRequest,
-    TransactionState,
-    TransactionStatus,
-    transaction_store,
-)
+from app.models import TransactionRequest, TransactionState, TransactionStatus
+from app.storage.transaction_store import transaction_store
+
+from .compensation import CompensationService
+from .http_client import ServiceClient
 
 logger = logging.getLogger(__name__)
 
