@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from app.models import TransactionRequest, TransactionState, TransactionStatus
+from app.models import TransactionRequest, TransactionDetail, TransactionStatus
 from app.storage.transaction_store import transaction_store
 
 from .compensation import CompensationService
@@ -18,8 +18,8 @@ class SagaService:
 
     def _create_transaction(
         self, purchase_request: TransactionRequest, transaction_id: str
-    ) -> TransactionState:
-        return TransactionState(
+    ) -> TransactionDetail:
+        return TransactionDetail(
             transaction_id=transaction_id,
             status=TransactionStatus.PENDING,
             user_id=purchase_request.user_id,
@@ -27,7 +27,7 @@ class SagaService:
             created_at=datetime.now(),
         )
 
-    async def _step_get_product(self, transaction: TransactionState) -> None:
+    async def _step_get_product(self, transaction: TransactionDetail) -> None:
         logger.info(
             f"[{transaction.transaction_id}] Step 1: Getting product from the catalog"
         )
@@ -43,7 +43,7 @@ class SagaService:
             f"[{transaction.transaction_id}] Product obtained: {transaction.product_id}"
         )
 
-    async def _step_process_payment(self, transaction: TransactionState) -> None:
+    async def _step_process_payment(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 2: Processing payment")
         payment_data = {
             "user_id": transaction.user_id,
@@ -62,7 +62,7 @@ class SagaService:
             f"[{transaction.transaction_id}] Payment processed: {transaction.payment_id}"
         )
 
-    async def _step_update_inventory(self, transaction: TransactionState) -> None:
+    async def _step_update_inventory(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 3: Updating inventory")
         inventory_data = {"product_id": transaction.product_id, "quantity": 1}
         await self.client.call_service(
@@ -74,7 +74,7 @@ class SagaService:
         transaction.inventory_updated = True
         logger.info(f"[{transaction.transaction_id}] Inventory updated")
 
-    async def _step_register_purchase(self, transaction: TransactionState) -> None:
+    async def _step_register_purchase(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 4: Registering purchase")
         purchase_data = {
             "transaction_id": transaction.transaction_id,
@@ -94,7 +94,7 @@ class SagaService:
 
     async def execute_saga(
         self, purchase_request: TransactionRequest
-    ) -> TransactionState:
+    ) -> TransactionDetail:
         transaction_id = str(uuid.uuid4())
         transaction = self._create_transaction(purchase_request, transaction_id)
 

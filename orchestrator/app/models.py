@@ -24,7 +24,7 @@ class TransactionResponse(BaseModel):
     timestamp: datetime
 
 
-class TransactionState(BaseModel):
+class TransactionDetail(BaseModel):
     transaction_id: str
     status: TransactionStatus
     user_id: str

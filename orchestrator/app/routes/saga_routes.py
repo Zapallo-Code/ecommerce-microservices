@@ -6,7 +6,7 @@ from . import (
     SagaService,
     TransactionRequest,
     TransactionResponse,
-    TransactionState,
+    TransactionDetail,
     TransactionStatus,
     transaction_store,
 )
@@ -58,8 +58,8 @@ async def initiate_transaction(request: TransactionRequest) -> TransactionRespon
         )
 
 
-@router.get("/status/{transaction_id}", response_model=TransactionState)
-async def get_transaction_status(transaction_id: str) -> TransactionState:
+@router.get("/status/{transaction_id}", response_model=TransactionDetail)
+async def get_transaction_status(transaction_id: str) -> TransactionDetail:
     transaction = transaction_store.get(transaction_id)
 
     if not transaction:

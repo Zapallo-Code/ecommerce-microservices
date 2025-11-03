@@ -1,3 +1,3 @@
-from app.models import TransactionState
+from app.models import TransactionDetail
 
-__all__ = ["TransactionState"]
+__all__ = ["TransactionDetail"]

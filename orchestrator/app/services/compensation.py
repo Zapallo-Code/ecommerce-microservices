@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from app.models import TransactionState
+from app.models import TransactionDetail
 
 from .http_client import ServiceClient
 
@@ -12,7 +12,7 @@ class CompensationService:
     def __init__(self) -> None:
         self.client = ServiceClient()
 
-    async def compensate_payment(self, transaction: TransactionState) -> bool:
+    async def compensate_payment(self, transaction: TransactionDetail) -> bool:
         if not transaction.payment_id:
             return True
 
@@ -29,7 +29,7 @@ class CompensationService:
             logger.error(f"Error offsetting payment: {str(e)}")
             return False
 
-    async def compensate_inventory(self, transaction: TransactionState) -> bool:
+    async def compensate_inventory(self, transaction: TransactionDetail) -> bool:
         if not transaction.inventory_updated or not transaction.product_id:
             return True
 
@@ -46,7 +46,7 @@ class CompensationService:
             logger.error(f"Error offsetting inventory: {str(e)}")
             return False
 
-    async def compensate_purchase(self, transaction: TransactionState) -> bool:
+    async def compensate_purchase(self, transaction: TransactionDetail) -> bool:
         if not transaction.purchase_registered:
             return True
 
@@ -64,7 +64,7 @@ class CompensationService:
             logger.error(f"Error offsetting purchase: {str(e)}")
             return False
 
-    async def execute_all_compensations(self, transaction: TransactionState) -> None:
+    async def execute_all_compensations(self, transaction: TransactionDetail) -> None:
         logger.warning(
             f"Starting compensations for transaction {transaction.transaction_id}"
         )
