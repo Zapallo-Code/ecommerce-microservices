@@ -1,5 +1,5 @@
 from app.config import settings
-from app.models import TransactionRequest, TransactionDetail, TransactionStatus
+from app.models import TransactionDetail, TransactionRequest, TransactionStatus
 from app.storage.transaction_store import transaction_store
 
 from .compensation import CompensationService

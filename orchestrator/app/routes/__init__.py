@@ -1,7 +1,7 @@
 from app.models import (
+    TransactionDetail,
     TransactionRequest,
     TransactionResponse,
-    TransactionDetail,
     TransactionStatus,
 )
 from app.services.saga_service import SagaService

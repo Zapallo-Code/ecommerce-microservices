@@ -40,7 +40,8 @@ class ServiceClient:
                     raise ValueError(f"Unsupported HTTP method: {method}")
 
                 response.raise_for_status()
-                return response.json()
+                result: dict[str, object] = response.json()
+                return result
 
         except httpx.TimeoutException:
             logger.error(f"Timeout while calling {service_name}{endpoint}")

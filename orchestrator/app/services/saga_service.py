@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from app.models import TransactionRequest, TransactionDetail, TransactionStatus
+from app.models import TransactionDetail, TransactionRequest, TransactionStatus
 from app.storage.transaction_store import transaction_store
 
 from .compensation import CompensationService
@@ -45,7 +45,7 @@ class SagaService:
 
     async def _step_process_payment(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 2: Processing payment")
-        payment_data = {
+        payment_data: dict[str, object] = {
             "user_id": transaction.user_id,
             "amount": transaction.amount,
             "product_id": transaction.product_id,
@@ -64,7 +64,10 @@ class SagaService:
 
     async def _step_update_inventory(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 3: Updating inventory")
-        inventory_data = {"product_id": transaction.product_id, "quantity": 1}
+        inventory_data: dict[str, object] = {
+            "product_id": transaction.product_id,
+            "quantity": 1,
+        }
         await self.client.call_service(
             "inventory",
             "/inventory/decrease",
@@ -76,7 +79,7 @@ class SagaService:
 
     async def _step_register_purchase(self, transaction: TransactionDetail) -> None:
         logger.info(f"[{transaction.transaction_id}] Step 4: Registering purchase")
-        purchase_data = {
+        purchase_data: dict[str, object] = {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
             "product_id": transaction.product_id,
