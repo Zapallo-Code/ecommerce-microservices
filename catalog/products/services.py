@@ -12,21 +12,21 @@ class ProductService:
         "iPad Pro 12.9"
     ]
     
-    CATEGORIES = ["Electrónica", "Computación", "Audio"]
+    CATEGORIES = ["Electronics", "Computing", "Audio"]
     
     @staticmethod
     def simulate_latency() -> None:
+        """Simulate network latency between 0.1 and 0.5 seconds"""
         time.sleep(random.uniform(0.1, 0.5))
     
     @staticmethod
     def generate_random_product() -> Dict:
-
         return {
             "id": random.randint(1000, 9999),
             "name": random.choice(ProductService.PRODUCT_NAMES),
             "price": round(random.uniform(100, 3000), 2),
             "category": random.choice(ProductService.CATEGORIES),
-            "description": "Producto de alta calidad",
+            "description": "High quality product",
             "stock": random.randint(1, 100)
         }
     
