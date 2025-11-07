@@ -1,11 +1,17 @@
-"""
-URL configuration for payments project (ms-pagos).
-Payments microservice for Saga architecture.
-"""
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
+
+
+def health_check(request):
+    """Health check endpoint for Docker and monitoring."""
+    return JsonResponse({"status": "healthy", "service": "payments"})
+
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', include('app.urls')),  # Endpoints at root level: /payment/ and /payment/compensate/
+    path("admin/", admin.site.urls),
+    path("api/health/", health_check, name="health"),
+    path(
+        "", include("app.urls")
+    ),  # Endpoints at root level: /payment/ and /payment/compensate/
 ]
