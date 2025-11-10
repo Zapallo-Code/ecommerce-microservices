@@ -1,14 +1,10 @@
+"""
+URL configuration for main project.
+"""
 from django.contrib import admin
-from django.urls import path
-from django.http import JsonResponse
-
-
-def health_check(request):
-    """Health check endpoint for Docker and monitoring."""
-    return JsonResponse({"status": "healthy", "service": "purchases"})
-
+from django.urls import path, include
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("api/health/", health_check, name="health"),
+    path('admin/', admin.site.urls),
+    path('api/', include('app.urls')),
 ]
