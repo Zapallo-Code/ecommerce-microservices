@@ -3,7 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Max
-from random import randint
+from random import randint, uniform
+import time
 from .models import Product
 from .serializers import ProductSerializer, ProductRandomSerializer
 
@@ -77,6 +78,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         Raises:
             404: Si no hay productos disponibles en la base de datos
         """
+        # Simular latencia de procesamiento entre 0.1 y 0.5 segundos
+        time.sleep(uniform(0.1, 0.5))
+        
         # Contar total de productos
         count = Product.objects.count()
         
