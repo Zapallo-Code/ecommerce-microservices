@@ -1,0 +1,218 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:latest
+    container_name: ecommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_MULTIPLE_DATABASES: ms_catalog,ms_payments,ms_inventory,ms_purchases
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
+
+  # Catalog Microservice
+  catalog:
+    build:
+      context: ./catalog
+      dockerfile: Dockerfile
+    container_name: ecommerce-catalog
+    restart: unless-stopped
+    environment:
+      # Django settings
+      SECRET_KEY: ${CATALOG_SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${CATALOG_ALLOWED_HOSTS:-catalog,localhost,127.0.0.1}
+      DJANGO_SETTINGS_MODULE: main.settings
+      # Database
+      POSTGRES_DB: ms_catalog
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      # Server settings
+      WORKERS: ${CATALOG_WORKERS:-4}
+      TIMEOUT: ${CATALOG_TIMEOUT:-30}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecommerce-network
+
+  # Payments Microservice
+  payments:
+    build:
+      context: ./payments
+      dockerfile: Dockerfile
+    container_name: ecommerce-payments
+    restart: unless-stopped
+    environment:
+      # Django settings
+      SECRET_KEY: ${PAYMENTS_SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${PAYMENTS_ALLOWED_HOSTS:-payments,localhost,127.0.0.1}
+      DJANGO_SETTINGS_MODULE: main.settings
+      # Database
+      POSTGRES_DB: ms_payments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      # Server settings
+      WORKERS: ${PAYMENTS_WORKERS:-4}
+      TIMEOUT: ${PAYMENTS_TIMEOUT:-30}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecommerce-network
+
+  # Inventory Microservice
+  inventory:
+    build:
+      context: ./inventory
+      dockerfile: Dockerfile
+    container_name: ecommerce-inventory
+    restart: unless-stopped
+    environment:
+      # Django settings
+      SECRET_KEY: ${INVENTORY_SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${INVENTORY_ALLOWED_HOSTS:-inventory,localhost,127.0.0.1}
+      DJANGO_SETTINGS_MODULE: main.settings
+      # Database
+      POSTGRES_DB: ms_inventory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      # Server settings
+      WORKERS: ${INVENTORY_WORKERS:-4}
+      TIMEOUT: ${INVENTORY_TIMEOUT:-30}
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecommerce-network
+
+  # Purchases Microservice
+  purchases:
+    build:
+      context: ./purchases
+      dockerfile: Dockerfile
+    container_name: ecommerce-purchases
+    restart: unless-stopped
+    environment:
+      # Django settings
+      SECRET_KEY: ${PURCHASES_SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${PURCHASES_ALLOWED_HOSTS:-purchases,localhost,127.0.0.1}
+      DJANGO_SETTINGS_MODULE: main.settings
+      # Database
+      POSTGRES_DB: ms_purchases
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      # Server settings
+      WORKERS: ${PURCHASES_WORKERS:-4}
+      TIMEOUT: ${PURCHASES_TIMEOUT:-30}
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecommerce-network
+
+  # Saga Orchestrator
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: ecommerce-orchestrator
+    restart: unless-stopped
+    environment:
+      # Service configuration
+      SERVICE_NAME: ${ORCHESTRATOR_SERVICE_NAME:-Saga Orchestrator}
+      VERSION: ${ORCHESTRATOR_VERSION:-1.0.0}
+      HOST: ${ORCHESTRATOR_HOST:-0.0.0.0}
+      PORT: ${ORCHESTRATOR_PORT:-8000}
+      # Microservices URLs
+      CATALOG_URL: http://catalog:8001
+      PAYMENTS_URL: http://payments:8002
+      INVENTORY_URL: http://inventory:8003
+      PURCHASES_URL: http://purchases:8004
+      # HTTP Client
+      HTTP_TIMEOUT: ${ORCHESTRATOR_HTTP_TIMEOUT:-30.0}
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Server settings
+      WORKERS: ${ORCHESTRATOR_WORKERS:-4}
+      TIMEOUT: ${ORCHESTRATOR_TIMEOUT:-30}
+    ports:
+      - "8000:8000"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      purchases:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecommerce-network
+
+networks:
+  ecommerce-network:
+    driver: bridge
+    name: ecommerce-network
+
+volumes:
+  postgres_data:
+    name: ecommerce-postgres-data

@@ -60,14 +60,14 @@ EXPOSE 8004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8001/api/health/ || exit 1
+    CMD curl -f http://localhost:8004/api/health/ || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Run with Gunicorn for production
 CMD ["gunicorn", "main.wsgi:application", \
-    "--bind", "0.0.0.0:8001", \
+    "--bind", "0.0.0.0:8004", \
     "--workers", "${WORKERS}", \
     "--worker-class", "${WORKER_CLASS}", \
     "--timeout", "${TIMEOUT}", \
