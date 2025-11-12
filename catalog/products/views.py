@@ -61,10 +61,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(out_of_stock_products, many=True)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='random')
     def random(self, request):
         """
-        Obtiene un producto aleatorio del catálogo
+        Endpoint requerido por el patrón Saga.
+        Retorna un producto aleatorio con datos disponibles.
+        Simula latencia y posibles errores.
         
         Returns:
             Response: JSON con el formato:
@@ -77,48 +79,34 @@ class ProductViewSet(viewsets.ModelViewSet):
             }
         
         Raises:
-            404: Si no hay productos disponibles en la base de datos
+            404: Si no hay productos disponibles (activos y con stock)
             500: Simulación aleatoria de error interno del servidor (10% probabilidad)
         """
         # Simular latencia de procesamiento entre 0.1 y 0.5 segundos
-        time.sleep(uniform(0.1, 0.5))
+        time.sleep(random.uniform(0.1, 0.5))
         
         # Simular error aleatorio con 10% de probabilidad
         if random.random() < 0.1:
             return Response(
-                {"error": "Simulated internal server error"},
+                {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        # Contar total de productos
-        count = Product.objects.count()
+        # Obtener productos activos con stock disponible
+        products = Product.objects.filter(
+            is_active=True,
+            stock__gt=0
+        )
         
-        if count == 0:
+        if not products.exists():
             return Response(
-                {
-                    "error": "No hay productos disponibles en el catálogo",
-                    "detail": "La base de datos no contiene productos para seleccionar"
-                },
+                {"error": "No products available"},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Método eficiente para obtener un producto aleatorio en bases grandes
-        max_id = Product.objects.aggregate(max_id=Max('id'))['max_id']
+        # Seleccionar un producto aleatorio
+        product = random.choice(list(products))
+        serializer = ProductRandomSerializer(product)
         
-        # Intentar obtener un producto válido
-        producto = None
-        intentos = 0
-        max_intentos = 10
-        
-        while not producto and intentos < max_intentos:
-            random_id = randint(1, max_id)
-            producto = Product.objects.filter(id__gte=random_id).first()
-            intentos += 1
-        
-        # Fallback: si no se encuentra después de varios intentos
-        if not producto:
-            producto = Product.objects.first()
-        
-        serializer = ProductRandomSerializer(producto)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
