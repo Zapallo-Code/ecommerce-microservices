@@ -1,11 +1,10 @@
 """
-Pytest configuration and fixtures for Purchase tests.
+Pytest configuration and fixtures for Purchase tests (Saga pattern).
 """
 import pytest
 from decimal import Decimal
-from django.contrib.auth.models import User
 from rest_framework.test import APIClient
-from app.models import Purchase, PurchaseDetail
+from app.models import Purchase
 
 
 @pytest.fixture
@@ -16,57 +15,37 @@ def api_client():
 
 @pytest.fixture
 def sample_purchase_data():
-    """Sample data for creating a purchase."""
+    """Sample data for creating a purchase (Saga format)."""
     return {
-        'customer_id': 1,
-        'items': [
-            {
-                'product_id': 1,
-                'quantity': 2,
-                'unit_price': '29.99'
-            },
-            {
-                'product_id': 2,
-                'quantity': 1,
-                'unit_price': '49.99'
-            }
-        ]
+        'transaction_id': 'test-txn-001',
+        'user_id': 'user-123',
+        'product_id': 'prod-456',
+        'payment_id': 'pay-789',
+        'amount': 100.50
     }
 
 
 @pytest.fixture
-def sample_items():
-    """Sample items list for purchase creation."""
-    return [
-        {
-            'product_id': 1,
-            'quantity': 2,
-            'unit_price': Decimal('29.99')
-        },
-        {
-            'product_id': 2,
-            'quantity': 1,
-            'unit_price': Decimal('49.99')
-        }
-    ]
-
-
-@pytest.fixture
-def created_purchase(db, sample_items):
+def created_purchase(db):
     """Fixture that creates a purchase in the database."""
-    from app.repositories import PurchaseRepository
-    return PurchaseRepository.create_purchase(
-        customer_id=1,
-        items=sample_items,
-        saga_id='test-saga-123'
+    return Purchase.objects.create(
+        transaction_id='test-txn-fixture',
+        user_id='user-123',
+        product_id='prod-456',
+        payment_id='pay-789',
+        amount=Decimal('100.00'),
+        status=Purchase.STATUS_PENDING
     )
 
 
 @pytest.fixture
-def admin_user(db):
-    """Create an admin user for testing."""
-    return User.objects.create_superuser(
-        username='admin',
-        email='admin@test.com',
-        password='admin123'
+def another_purchase(db):
+    """Fixture for a second purchase."""
+    return Purchase.objects.create(
+        transaction_id='test-txn-002',
+        user_id='user-456',
+        product_id='prod-789',
+        payment_id='pay-012',
+        amount=Decimal('50.00'),
+        status=Purchase.STATUS_PENDING
     )

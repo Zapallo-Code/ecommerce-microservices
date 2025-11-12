@@ -1,3 +1,9 @@
-from .purchase_view import PurchaseViewSet
+from .purchase_view import (
+    PurchaseCreateView,
+    PurchaseCancelView
+)
 
-__all__ = ['PurchaseViewSet']
+__all__ = [
+    'PurchaseCreateView',
+    'PurchaseCancelView'
+]

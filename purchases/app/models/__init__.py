@@ -1,3 +1,3 @@
-from .purchase import Purchase, PurchaseDetail
+from .purchase import Purchase
 
-__all__ = ['Purchase', 'PurchaseDetail']
+__all__ = ['Purchase']
