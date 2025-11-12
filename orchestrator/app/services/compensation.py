@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from app.models import TransactionDetail
@@ -71,29 +70,29 @@ class CompensationService:
 
         # Define compensations in reverse order to the normal flow
         compensations: list[tuple[str, object]] = []
-        compensation_tasks = []
 
         if transaction.purchase_registered:
-            task = self.compensate_purchase(transaction)
-            compensations.append(("purchase", task))
-            compensation_tasks.append(task)
+            compensations.append(("purchase", self.compensate_purchase))
 
         if transaction.inventory_updated:
-            task = self.compensate_inventory(transaction)
-            compensations.append(("inventory", task))
-            compensation_tasks.append(task)
+            compensations.append(("inventory", self.compensate_inventory))
 
         if transaction.payment_id:
-            task = self.compensate_payment(transaction)
-            compensations.append(("payment", task))
-            compensation_tasks.append(task)
+            compensations.append(("payment", self.compensate_payment))
 
-        # Execute compensations concurrently
-        results = await asyncio.gather(*compensation_tasks, return_exceptions=True)
+        # Execute compensations SEQUENTIALLY in reverse order
+        # This ensures consistency and proper rollback
+        for name, compensation_fn in compensations:
+            try:
+                logger.info(f"Executing compensation for {name}...")
+                result = await compensation_fn(transaction)
 
-        # Log results
-        for (name, _), result in zip(compensations, results, strict=True):
-            if isinstance(result, Exception) or not result:
-                logger.error(f"Compensation for {name} failed")
-            else:
-                logger.info(f"Compensation for {name} succeeded")
+                if result:
+                    logger.info(f"Compensation for {name} succeeded")
+                else:
+                    logger.error(f"Compensation for {name} failed")
+            except Exception as e:
+                logger.error(
+                    f"Compensation for {name} failed with exception: {str(e)}",
+                    exc_info=True,
+                )

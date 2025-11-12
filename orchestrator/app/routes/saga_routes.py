@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from . import (
     SagaService,
@@ -15,9 +16,7 @@ router = APIRouter(prefix="/saga", tags=["Saga Orchestrator"])
 saga_service = SagaService()
 
 
-@router.post(
-    "/transaction", response_model=TransactionResponse, status_code=status.HTTP_200_OK
-)
+@router.post("/transaction", response_model=TransactionResponse)
 async def initiate_transaction(request: TransactionRequest) -> TransactionResponse:
     try:
         transaction = await saga_service.execute_saga(request)
@@ -44,10 +43,10 @@ async def initiate_transaction(request: TransactionRequest) -> TransactionRespon
         )
         error_message = last_transaction.error_message if last_transaction else str(e)
 
-        return TransactionResponse(
+        response = TransactionResponse(
             transaction_id=transaction_id,
             status=TransactionStatus.COMPENSATED,
-            message="Transaction was reverted",
+            message="Transaction failed and was reverted",
             details={
                 "user_id": request.user_id,
                 "product_id": last_transaction.product_id if last_transaction else None,
@@ -55,6 +54,11 @@ async def initiate_transaction(request: TransactionRequest) -> TransactionRespon
                 "error": error_message,
             },
             timestamp=datetime.now(),
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response.model_dump(mode="json"),
         )
 
 
