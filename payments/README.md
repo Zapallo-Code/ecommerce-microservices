@@ -117,14 +117,14 @@ docker build -t payments-service .
 
 Ejecutar contenedor:
 ```bash
-docker run -p 8000:8000 payments-service
+docker run -p 8002:8002 payments-service
 ```
 
 ## 📝 Ejemplos de Uso
 
 ### Crear un nuevo pago
 ```bash
-curl -X POST http://localhost:8000/api/payments/ \
+curl -X POST http://localhost:8002/api/payments/ \
   -H "Content-Type: application/json" \
   -d '{
     "order_id": "ORDER-123",
@@ -136,7 +136,7 @@ curl -X POST http://localhost:8000/api/payments/ \
 
 ### Procesar un pago
 ```bash
-curl -X POST http://localhost:8000/api/payments/1/process/ \
+curl -X POST http://localhost:8002/api/payments/1/process/ \
   -H "Content-Type: application/json" \
   -d '{
     "status": "completed",
@@ -146,7 +146,7 @@ curl -X POST http://localhost:8000/api/payments/1/process/ \
 
 ### Reembolsar un pago
 ```bash
-curl -X POST http://localhost:8000/api/payments/1/refund/ \
+curl -X POST http://localhost:8002/api/payments/1/refund/ \
   -H "Content-Type: application/json" \
   -d '{
     "reason": "Cliente solicitó devolución"
