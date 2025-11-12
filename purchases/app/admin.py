@@ -2,14 +2,7 @@
 Django admin configuration for Purchase models.
 """
 from django.contrib import admin
-from app.models import Purchase, PurchaseDetail
-
-
-class PurchaseDetailInline(admin.TabularInline):
-    """Inline admin for purchase details."""
-    model = PurchaseDetail
-    extra = 0
-    fields = ['product_id', 'quantity', 'unit_price']
+from app.models import Purchase
 
 
 @admin.register(Purchase)
@@ -18,29 +11,31 @@ class PurchaseAdmin(admin.ModelAdmin):
     
     list_display = [
         'id',
-        'customer_id',
+        'transaction_id',
+        'user_id',
+        'product_id',
+        'amount',
         'status',
-        'total_amount',
-        'saga_id',
         'created_at'
     ]
     list_filter = ['status', 'created_at']
-    search_fields = ['id', 'customer_id', 'saga_id']
-    readonly_fields = ['created_at', 'updated_at', 'total_amount']
-    inlines = [PurchaseDetailInline]
+    search_fields = ['id', 'transaction_id', 'user_id', 'product_id']
+    readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = (
-        ('Purchase Information', {
+        ('Transaction Information', {
             'fields': (
-                'customer_id',
-                'total_amount',
+                'transaction_id',
+                'user_id',
+                'product_id',
+                'payment_id',
+                'amount',
                 'status'
             )
         }),
-        ('Saga Information', {
+        ('Error Information', {
             'fields': (
-                'saga_id',
-                'error_message'
+                'error_message',
             )
         }),
         ('Timestamps', {
@@ -50,18 +45,3 @@ class PurchaseAdmin(admin.ModelAdmin):
             )
         }),
     )
-
-
-@admin.register(PurchaseDetail)
-class PurchaseDetailAdmin(admin.ModelAdmin):
-    """Admin configuration for PurchaseDetail model."""
-    
-    list_display = [
-        'id',
-        'purchase',
-        'product_id',
-        'quantity',
-        'unit_price'
-    ]
-    list_filter = ['purchase__status']
-    search_fields = ['purchase__id', 'product_id']

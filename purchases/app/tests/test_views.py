@@ -1,5 +1,5 @@
 """
-Integration tests for Purchase API Views.
+Integration tests for Purchase API Views (Saga pattern).
 """
 import pytest
 from unittest.mock import patch
@@ -11,7 +11,7 @@ from app.models import Purchase
 @pytest.mark.django_db
 @pytest.mark.integration
 class TestPurchaseViewSet:
-    """Integration tests for PurchaseViewSet."""
+    """Integration tests for Purchase Saga endpoints."""
     
     @patch('app.services.purchase_service.random.random')
     @patch('app.services.purchase_service.time.sleep')
@@ -22,20 +22,19 @@ class TestPurchaseViewSet:
         api_client,
         sample_purchase_data
     ):
-        """Test successful purchase creation."""
-        mock_random.return_value = 0.3  # Will succeed
+        """Test successful purchase creation (Saga success)."""
+        mock_random.return_value = 0.3  # Will succeed (< 0.5)
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             sample_purchase_data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['success'] is True
-        assert response.data['status'] == 'confirmed'
-        assert 'purchase' in response.data
-        assert 'saga_id' in response.data
+        assert response.data['status'] == 'success'
+        assert 'purchase_id' in response.data
+        assert response.data['transaction_id'] == 'test-txn-001'
     
     @patch('app.services.purchase_service.random.random')
     @patch('app.services.purchase_service.time.sleep')
@@ -46,317 +45,202 @@ class TestPurchaseViewSet:
         api_client,
         sample_purchase_data
     ):
-        """Test failed purchase creation (Saga failure)."""
-        mock_random.return_value = 0.7  # Will fail
+        """Test failed purchase creation (Saga failure - 409 Conflict)."""
+        mock_random.return_value = 0.7  # Will fail (>= 0.5)
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             sample_purchase_data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_409_CONFLICT
-        assert response.data['success'] is False
-        assert response.data['status'] == 'failed'
-        assert 'error' in response.data
+        assert response.data['status'] == 'error'
+        assert response.data['message'] == 'Purchase failed'
+        assert response.data['error'] == 'CONFLICT'
     
-    def test_create_purchase_invalid_data(self, api_client):
-        """Test purchase creation with invalid data."""
+    def test_create_purchase_invalid_amount(self, api_client):
+        """Test purchase creation with invalid amount."""
         invalid_data = {
-            'customer_id': 0,  # Invalid
-            'items': []
+            'transaction_id': 'test-invalid',
+            'user_id': 'user-123',
+            'product_id': 'prod-456',
+            'payment_id': 'pay-789',
+            'amount': 0  # Invalid: must be > 0
         }
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             invalid_data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data['success'] is False
-        assert 'errors' in response.data
     
-    def test_create_purchase_missing_customer_id(self, api_client):
-        """Test purchase creation without customer_id."""
+    def test_create_purchase_missing_transaction_id(self, api_client):
+        """Test purchase creation without transaction_id."""
         data = {
-            'items': [
-                {
-                    'product_id': 1,
-                    'quantity': 1,
-                    'unit_price': '10.00'
-                }
-            ]
+            'user_id': 'user-123',
+            'product_id': 'prod-456',
+            'payment_id': 'pay-789',
+            'amount': 100.50
         }
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_purchase_missing_items(self, api_client):
-        """Test purchase creation without items."""
+    def test_create_purchase_missing_user_id(self, api_client):
+        """Test purchase creation without user_id."""
         data = {
-            'customer_id': 1
+            'transaction_id': 'test-missing-user',
+            'product_id': 'prod-456',
+            'payment_id': 'pay-789',
+            'amount': 100.50
         }
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_purchase_empty_items(self, api_client):
-        """Test purchase creation with empty items list."""
+    def test_create_purchase_negative_amount(self, api_client):
+        """Test purchase creation with negative amount."""
         data = {
-            'customer_id': 1,
-            'items': []
+            'transaction_id': 'test-negative',
+            'user_id': 'user-123',
+            'product_id': 'prod-456',
+            'payment_id': 'pay-789',
+            'amount': -50.00
         }
         
         response = api_client.post(
-            '/api/purchases/purchase/',
+            '/api/purchases',
             data,
             format='json'
         )
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    @patch('app.services.purchase_service.time.sleep')
-    def test_compensate_purchase_by_id(
-        self,
-        mock_sleep,
-        api_client,
-        created_purchase
-    ):
-        """Test compensating purchase by ID."""
-        response = api_client.post(
-            '/api/purchases/compensate/',
-            {'purchase_id': created_purchase.id},
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['success'] is True
-        assert response.data['status'] == 'cancelled'
-        assert response.data['purchase_id'] == created_purchase.id
-    
-    @patch('app.services.purchase_service.time.sleep')
-    def test_compensate_purchase_by_saga_id(
-        self,
-        mock_sleep,
-        api_client,
-        created_purchase
-    ):
-        """Test compensating purchase by saga_id."""
-        response = api_client.post(
-            '/api/purchases/compensate/',
-            {'saga_id': 'test-saga-123'},
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['success'] is True
-        assert response.data['saga_id'] == 'test-saga-123'
-    
-    @patch('app.services.purchase_service.time.sleep')
-    def test_compensate_purchase_not_found(self, mock_sleep, api_client):
-        """Test compensating non-existing purchase."""
-        response = api_client.post(
-            '/api/purchases/compensate/',
-            {'purchase_id': 99999},
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['success'] is False
-        assert 'error' in response.data
-    
-    def test_compensate_purchase_missing_identifier(self, api_client):
-        """Test compensation without purchase_id or saga_id."""
-        response = api_client.post(
-            '/api/purchases/compensate/',
-            {},
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-    
-    def test_list_purchases(self, api_client, created_purchase):
-        """Test listing all purchases."""
-        response = api_client.get('/api/purchases/list/')
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert 'count' in response.data
-        assert 'purchases' in response.data
-        assert response.data['count'] >= 1
-    
-    def test_list_purchases_by_customer(
-        self,
-        api_client,
-        sample_items
-    ):
-        """Test listing purchases filtered by customer."""
-        from app.repositories import PurchaseRepository
-        
-        # Create purchases for specific customer
-        PurchaseRepository.create_purchase(
-            customer_id=99,
-            items=sample_items
-        )
-        
-        response = api_client.get(
-            '/api/purchases/list/',
-            {'customer_id': 99}
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['count'] >= 1
-        purchases = response.data['purchases']
-        assert all(p['customer_id'] == 99 for p in purchases)
-    
-    def test_retrieve_purchase(self, api_client, created_purchase):
-        """Test retrieving specific purchase."""
-        response = api_client.get(
-            f'/api/purchases/{created_purchase.id}/retrieve_purchase/'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['success'] is True
-        assert 'purchase' in response.data
-        assert response.data['purchase']['id'] == created_purchase.id
-    
-    def test_retrieve_purchase_not_found(self, api_client):
-        """Test retrieving non-existing purchase."""
-        response = api_client.get('/api/purchases/99999/retrieve_purchase/')
-        
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert response.data['success'] is False
-    
     @patch('app.services.purchase_service.random.random')
     @patch('app.services.purchase_service.time.sleep')
-    def test_purchase_creates_correct_details(
-        self,
-        mock_sleep,
-        mock_random,
-        api_client,
-        sample_purchase_data
-    ):
-        """Test that purchase details are created correctly."""
-        mock_random.return_value = 0.3  # Will succeed
-        
-        response = api_client.post(
-            '/api/purchases/purchase/',
-            sample_purchase_data,
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        purchase_data = response.data['purchase']
-        assert len(purchase_data['details']) == 2
-        
-        # Check first detail
-        detail1 = purchase_data['details'][0]
-        assert detail1['product_id'] == 1
-        assert detail1['quantity'] == 2
-        assert Decimal(detail1['unit_price']) == Decimal('29.99')
-    
-    @patch('app.services.purchase_service.random.random')
-    @patch('app.services.purchase_service.time.sleep')
-    def test_purchase_calculates_total(
-        self,
-        mock_sleep,
-        mock_random,
-        api_client,
-        sample_purchase_data
-    ):
-        """Test that total is calculated correctly."""
-        mock_random.return_value = 0.3  # Will succeed
-        
-        response = api_client.post(
-            '/api/purchases/purchase/',
-            sample_purchase_data,
-            format='json'
-        )
-        
-        purchase_data = response.data['purchase']
-        expected_total = Decimal('29.99') * 2 + Decimal('49.99')
-        assert Decimal(purchase_data['total_amount']) == expected_total
-    
-    @patch('app.services.purchase_service.time.sleep')
-    def test_compensate_verified_in_database(
-        self,
-        mock_sleep,
-        api_client,
-        created_purchase
-    ):
-        """Test that compensation is persisted in database."""
-        response = api_client.post(
-            '/api/purchases/compensate/',
-            {'purchase_id': created_purchase.id},
-            format='json'
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Verify in database
-        purchase = Purchase.objects.get(id=created_purchase.id)
-        assert purchase.status == Purchase.STATUS_CANCELLED
-    
-    def test_invalid_json_format(self, api_client):
-        """Test handling of invalid JSON."""
-        response = api_client.post(
-            '/api/purchases/purchase/',
-            'invalid-json',
-            content_type='application/json'
-        )
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-    
-    @patch('app.services.purchase_service.random.random')
-    @patch('app.services.purchase_service.time.sleep')
-    def test_purchase_with_multiple_items(
+    def test_create_purchase_idempotency(
         self,
         mock_sleep,
         mock_random,
         api_client
     ):
-        """Test purchase with multiple different items."""
+        """Test idempotency - same transaction_id returns same result."""
         mock_random.return_value = 0.3  # Will succeed
         
         data = {
-            'customer_id': 1,
-            'items': [
-                {
-                    'product_id': 1,
-                    'quantity': 1,
-                    'unit_price': '10.00'
-                },
-                {
-                    'product_id': 2,
-                    'quantity': 2,
-                    'unit_price': '20.00'
-                },
-                {
-                    'product_id': 3,
-                    'quantity': 3,
-                    'unit_price': '30.00'
-                }
-            ]
+            'transaction_id': 'idempotent-txn',
+            'user_id': 'user-123',
+            'product_id': 'prod-456',
+            'payment_id': 'pay-789',
+            'amount': 150.00
         }
         
-        response = api_client.post(
-            '/api/purchases/purchase/',
-            data,
-            format='json'
+        # First request
+        response1 = api_client.post('/api/purchases', data, format='json')
+        assert response1.status_code == status.HTTP_200_OK
+        
+        # Second request with same transaction_id (idempotent)
+        response2 = api_client.post('/api/purchases', data, format='json')
+        assert response2.status_code == status.HTTP_200_OK
+        assert (response1.data['purchase_id'] ==
+                response2.data['purchase_id'])
+    
+    @patch('app.services.purchase_service.time.sleep')
+    def test_cancel_purchase_by_transaction_id(
+        self,
+        mock_sleep,
+        api_client,
+        created_purchase
+    ):
+        """Test cancelling purchase by transaction_id."""
+        response = api_client.delete(
+            f'/api/purchases/{created_purchase.transaction_id}/cancel'
         )
         
         assert response.status_code == status.HTTP_200_OK
-        purchase_data = response.data['purchase']
-        assert len(purchase_data['details']) == 3
-        assert Decimal(purchase_data['total_amount']) == Decimal('140.00')
+        assert response.data['status'] == 'success'
+        assert 'message' in response.data
+        assert (response.data['transaction_id'] ==
+                created_purchase.transaction_id)
+        
+        # Verify purchase was cancelled in DB
+        created_purchase.refresh_from_db()
+        assert created_purchase.is_cancelled()
+    
+    @patch('app.services.purchase_service.time.sleep')
+    def test_cancel_purchase_not_found(self, mock_sleep, api_client):
+        """Test cancelling non-existing purchase."""
+        response = api_client.delete(
+            '/api/purchases/non-existing-txn/cancel'
+        )
+        
+        # Saga compensation always returns 200 OK
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'success'
+    
+    @patch('app.services.purchase_service.random.random')
+    @patch('app.services.purchase_service.time.sleep')
+    def test_latency_simulation(
+        self,
+        mock_sleep,
+        mock_random,
+        api_client,
+        sample_purchase_data
+    ):
+        """Test that service simulates latency."""
+        mock_random.return_value = 0.3  # Will succeed
+        
+        api_client.post(
+            '/api/purchases',
+            sample_purchase_data,
+            format='json'
+        )
+        
+        # Verify sleep was called (latency simulation)
+        assert mock_sleep.called
+    
+    @patch('app.services.purchase_service.random.random')
+    @patch('app.services.purchase_service.time.sleep')
+    def test_purchase_stores_all_fields(
+        self,
+        mock_sleep,
+        mock_random,
+        api_client
+    ):
+        """Test that all fields are stored correctly."""
+        mock_random.return_value = 0.3  # Will succeed
+        
+        data = {
+            'transaction_id': 'test-all-fields',
+            'user_id': 'user-999',
+            'product_id': 'prod-888',
+            'payment_id': 'pay-777',
+            'amount': 99.99
+        }
+        
+        response = api_client.post('/api/purchases', data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Verify in database
+        purchase = Purchase.objects.get(
+            transaction_id='test-all-fields'
+        )
+        assert purchase.user_id == 'user-999'
+        assert purchase.product_id == 'prod-888'
+        assert purchase.payment_id == 'pay-777'
+        assert purchase.amount == Decimal('99.99')
+        assert purchase.is_success()

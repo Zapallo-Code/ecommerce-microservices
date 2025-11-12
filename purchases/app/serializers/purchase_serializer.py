@@ -1,130 +1,85 @@
 """
 Serializers for Purchase API endpoints.
-Handles request/response serialization and validation.
+Handles request/response serialization and validation for Saga pattern.
 """
 from rest_framework import serializers
-from app.models import Purchase, PurchaseDetail
-
-
-class PurchaseDetailSerializer(serializers.ModelSerializer):
-    """Serializer for purchase detail items."""
-    
-    subtotal = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = PurchaseDetail
-        fields = [
-            'id',
-            'product_id',
-            'quantity',
-            'unit_price',
-            'subtotal'
-        ]
-        read_only_fields = ['id', 'subtotal']
-    
-    def get_subtotal(self, obj):
-        """Calculate subtotal for the detail."""
-        return obj.get_subtotal()
-
-
-class PurchaseDetailRequestSerializer(serializers.Serializer):
-    """Serializer for purchase detail in requests."""
-    
-    product_id = serializers.IntegerField(min_value=1)
-    quantity = serializers.IntegerField(min_value=1)
-    unit_price = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        min_value=0
-    )
 
 
 class PurchaseRequestSerializer(serializers.Serializer):
-    """Serializer for creating a purchase."""
+    """
+    Serializer for creating a purchase (Saga transaction).
     
-    customer_id = serializers.IntegerField(min_value=1)
-    items = PurchaseDetailRequestSerializer(many=True, min_length=1)
+    Expected request from orchestrator:
+    {
+        "transaction_id": "uuid",
+        "user_id": "string",
+        "product_id": "string",
+        "payment_id": "string",
+        "amount": 100.50
+    }
+    """
     
-    def validate_items(self, value):
-        """Validate that items list is not empty."""
-        if not value:
+    transaction_id = serializers.CharField(max_length=100)
+    user_id = serializers.CharField(max_length=255)
+    product_id = serializers.CharField(max_length=255)
+    payment_id = serializers.CharField(max_length=255)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    def validate_amount(self, value):
+        """Validate that amount is positive."""
+        if value <= 0:
             raise serializers.ValidationError(
-                "At least one item is required"
+                "Amount must be greater than zero"
             )
         return value
 
 
-class PurchaseResponseSerializer(serializers.ModelSerializer):
-    """Serializer for purchase responses."""
+class PurchaseSuccessResponseSerializer(serializers.Serializer):
+    """
+    Serializer for successful purchase response (200 OK).
     
-    details = PurchaseDetailSerializer(many=True, read_only=True)
+    Response format:
+    {
+        "status": "success",
+        "purchase_id": "generated-id",
+        "transaction_id": "uuid"
+    }
+    """
     
-    class Meta:
-        model = Purchase
-        fields = [
-            'id',
-            'customer_id',
-            'total_amount',
-            'status',
-            'saga_id',
-            'created_at',
-            'updated_at',
-            'details',
-            'error_message'
-        ]
-        read_only_fields = fields
+    status = serializers.CharField(default="success")
+    purchase_id = serializers.IntegerField(source='id')
+    transaction_id = serializers.CharField()
 
 
-class PurchaseListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for purchase lists."""
+class PurchaseErrorResponseSerializer(serializers.Serializer):
+    """
+    Serializer for failed purchase response (409 Conflict).
     
-    items_count = serializers.SerializerMethodField()
+    Response format:
+    {
+        "status": "error",
+        "message": "Purchase failed",
+        "error": "CONFLICT"
+    }
+    """
     
-    class Meta:
-        model = Purchase
-        fields = [
-            'id',
-            'customer_id',
-            'total_amount',
-            'status',
-            'saga_id',
-            'created_at',
-            'items_count'
-        ]
-        read_only_fields = fields
-    
-    def get_items_count(self, obj):
-        """Get count of items in purchase."""
-        return obj.details.count()
-
-
-class CompensateRequestSerializer(serializers.Serializer):
-    """Serializer for compensation requests."""
-    
-    purchase_id = serializers.IntegerField(
-        required=False,
-        min_value=1
-    )
-    saga_id = serializers.CharField(
-        required=False,
-        max_length=100
-    )
-    
-    def validate(self, data):
-        """Validate that at least one identifier is provided."""
-        if not data.get('purchase_id') and not data.get('saga_id'):
-            raise serializers.ValidationError(
-                "Either purchase_id or saga_id must be provided"
-            )
-        return data
-
-
-class CompensateResponseSerializer(serializers.Serializer):
-    """Serializer for compensation responses."""
-    
-    success = serializers.BooleanField()
-    status = serializers.CharField(required=False)
-    purchase_id = serializers.IntegerField(required=False)
-    saga_id = serializers.CharField(required=False)
+    status = serializers.CharField(default="error")
     message = serializers.CharField()
-    error = serializers.CharField(required=False)
+    error = serializers.CharField()
+
+
+class CancelResponseSerializer(serializers.Serializer):
+    """
+    Serializer for cancel/compensation response (200 OK).
+    
+    Response format:
+    {
+        "status": "success",
+        "message": "Purchase cancelled successfully",
+        "transaction_id": "uuid"
+    }
+    """
+    
+    status = serializers.CharField()
+    message = serializers.CharField()
+    transaction_id = serializers.CharField()

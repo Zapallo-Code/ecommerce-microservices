@@ -1,29 +1,32 @@
 """
 API Views for Purchase endpoints.
 Implements REST API for purchase operations with Saga pattern.
+Uses APIView instead of ViewSet for cleaner endpoint definitions.
 """
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.permissions import AllowAny
 import logging
 
-from app.services import PurchaseService
-from app.serializers import (
+from app.services.purchase_service import PurchaseService
+from app.serializers.purchase_serializer import (
     PurchaseRequestSerializer,
-    PurchaseResponseSerializer,
-    PurchaseListSerializer,
-    CompensateRequestSerializer,
-    CompensateResponseSerializer
+    PurchaseSuccessResponseSerializer,
+    PurchaseErrorResponseSerializer,
+    CancelResponseSerializer
 )
 
 logger = logging.getLogger(__name__)
 
 
-class PurchaseViewSet(viewsets.ViewSet):
+class PurchaseCreateView(APIView):
     """
-    ViewSet for purchase operations.
-    Implements Saga orchestration endpoints.
+    API endpoint for creating a purchase transaction.
+    POST /purchases
+    
+    Implements Saga pattern with random success/failure (50%).
+    Returns 200 OK for success or 409 Conflict for failure.
     """
     
     permission_classes = [AllowAny]
@@ -32,22 +35,31 @@ class PurchaseViewSet(viewsets.ViewSet):
         super().__init__(**kwargs)
         self.service = PurchaseService()
     
-    @action(detail=False, methods=['post'], url_path='purchase')
-    def create_purchase(self, request):
+    def post(self, request):
         """
-        Create a new purchase using Saga pattern.
-        Returns 200 with confirmed status or 409 with failed status.
+        Create a new purchase transaction.
         
-        POST /api/purchases/purchase/
+        Request body:
         {
-            "customer_id": 1,
-            "items": [
-                {
-                    "product_id": 1,
-                    "quantity": 2,
-                    "unit_price": "29.99"
-                }
-            ]
+            "transaction_id": "uuid",
+            "user_id": "string",
+            "product_id": "string",
+            "payment_id": "string",
+            "amount": 100.50
+        }
+        
+        Response 200 OK:
+        {
+            "status": "success",
+            "purchase_id": "generated-id",
+            "transaction_id": "uuid"
+        }
+        
+        Response 409 Conflict:
+        {
+            "status": "error",
+            "message": "Purchase failed",
+            "error": "CONFLICT"
         }
         """
         # Validate request
@@ -58,7 +70,7 @@ class PurchaseViewSet(viewsets.ViewSet):
             )
             return Response(
                 {
-                    'success': False,
+                    'status': 'error',
                     'message': 'Invalid request data',
                     'errors': serializer.errors
                 },
@@ -66,149 +78,93 @@ class PurchaseViewSet(viewsets.ViewSet):
             )
         
         # Process purchase
-        result = self.service.process_purchase(
-            customer_id=serializer.validated_data['customer_id'],
-            items=serializer.validated_data['items']
+        validated_data = serializer.validated_data
+        result = self.service.create_purchase(
+            transaction_id=validated_data['transaction_id'],
+            user_id=validated_data['user_id'],
+            product_id=validated_data['product_id'],
+            payment_id=validated_data['payment_id'],
+            amount=validated_data['amount']
         )
         
-        # Return response based on Saga result
-        if result['success']:
-            # Saga succeeded - return 200
-            purchase = self.service.get_purchase(
-                result['purchase_id']
+        # Return response based on result
+        if result['status'] == 'success':
+            # Success path - return 200 OK
+            response_serializer = PurchaseSuccessResponseSerializer(
+                data=result
             )
-            purchase_data = PurchaseResponseSerializer(purchase).data
+            response_serializer.is_valid()
+            
+            logger.info(
+                f"Purchase created successfully: "
+                f"{result['transaction_id']}"
+            )
             
             return Response(
-                {
-                    'success': True,
-                    'status': result['status'],
-                    'message': result['message'],
-                    'saga_id': result['saga_id'],
-                    'purchase': purchase_data
-                },
+                response_serializer.data,
                 status=status.HTTP_200_OK
             )
         else:
-            # Saga failed - return 409 Conflict
-            response_data = {
-                'success': False,
-                'status': result['status'],
-                'message': result['message'],
-                'error': result.get('error'),
-                'saga_id': result.get('saga_id')
-            }
+            # Failure path - return 409 Conflict
+            response_serializer = PurchaseErrorResponseSerializer(
+                data=result
+            )
+            response_serializer.is_valid()
             
-            if 'purchase_id' in result:
-                purchase = self.service.get_purchase(
-                    result['purchase_id']
-                )
-                if purchase:
-                    response_data['purchase'] = (
-                        PurchaseResponseSerializer(purchase).data
-                    )
+            logger.warning(
+                f"Purchase failed: {result.get('transaction_id', 'N/A')}"
+            )
             
             return Response(
-                response_data,
+                response_serializer.data,
                 status=status.HTTP_409_CONFLICT
             )
+
+
+class PurchaseCancelView(APIView):
+    """
+    API endpoint for cancelling a purchase (compensation).
+    DELETE /purchases/<transaction_id>/cancel
     
-    @action(detail=False, methods=['post'], url_path='compensate')
-    def compensate_purchase(self, request):
+    Part of Saga compensation flow.
+    Always returns 200 OK.
+    """
+    
+    permission_classes = [AllowAny]
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.service = PurchaseService()
+    
+    def delete(self, request, transaction_id):
         """
-        Compensate (cancel) a purchase.
-        Part of the Saga compensation flow.
-        Always returns 200 OK.
+        Cancel a purchase transaction (compensation).
         
-        POST /api/purchases/compensate/
+        Args:
+            transaction_id: Transaction ID to cancel
+        
+        Response 200 OK (always):
         {
-            "purchase_id": 1
-        }
-        or
-        {
-            "saga_id": "uuid-here"
+            "status": "success",
+            "message": "Purchase cancelled successfully",
+            "transaction_id": "uuid"
         }
         """
-        # Validate request
-        serializer = CompensateRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.warning(
-                f"Invalid compensation request: {serializer.errors}"
-            )
-            return Response(
-                {
-                    'success': False,
-                    'message': 'Invalid request data',
-                    'errors': serializer.errors
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        logger.info(f"Cancellation requested for: {transaction_id}")
         
-        # Execute compensation
-        result = self.service.compensate_purchase(
-            purchase_id=serializer.validated_data.get('purchase_id'),
-            saga_id=serializer.validated_data.get('saga_id')
-        )
+        # Execute cancellation
+        result = self.service.cancel_purchase(transaction_id)
         
-        # Always return 200 for compensation endpoint
-        response_serializer = CompensateResponseSerializer(data=result)
+        # Serialize response
+        response_serializer = CancelResponseSerializer(data=result)
         response_serializer.is_valid()
         
+        logger.info(
+            f"Cancellation completed for: {transaction_id}"
+        )
+        
+        # Always return 200 OK for compensation
         return Response(
             response_serializer.data,
-            status=status.HTTP_200_OK
-        )
-    
-    @action(detail=False, methods=['get'], url_path='list')
-    def list_purchases(self, request):
-        """
-        List all purchases (for testing/debugging).
-        
-        GET /api/purchases/list/
-        """
-        customer_id = request.query_params.get('customer_id')
-        
-        if customer_id:
-            purchases = self.service.get_customer_purchases(
-                int(customer_id)
-            )
-        else:
-            # For simplicity, get all purchases (limit 100)
-            from app.repositories import PurchaseRepository
-            purchases = PurchaseRepository.get_all(limit=100)
-        
-        serializer = PurchaseListSerializer(purchases, many=True)
-        return Response(
-            {
-                'count': len(purchases),
-                'purchases': serializer.data
-            },
-            status=status.HTTP_200_OK
-        )
-    
-    @action(detail=True, methods=['get'])
-    def retrieve_purchase(self, request, pk=None):
-        """
-        Retrieve a specific purchase by ID.
-        
-        GET /api/purchases/{id}/
-        """
-        purchase = self.service.get_purchase(int(pk))
-        
-        if not purchase:
-            return Response(
-                {
-                    'success': False,
-                    'message': 'Purchase not found'
-                },
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = PurchaseResponseSerializer(purchase)
-        return Response(
-            {
-                'success': True,
-                'purchase': serializer.data
-            },
             status=status.HTTP_200_OK
         )

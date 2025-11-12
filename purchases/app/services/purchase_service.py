@@ -1,13 +1,13 @@
 """
 Service layer for Purchase business logic.
-Implements the Saga orchestration pattern with simulated failures.
+Implements Saga pattern with simulated failures and latency.
+Follows SOLID principles and clean code practices.
 """
 import random
 import time
-import uuid
 import logging
-from typing import Optional, Dict, Any
-from app.repositories import PurchaseRepository
+from typing import Dict, Any
+from django.db import transaction
 from app.models import Purchase
 
 logger = logging.getLogger(__name__)
@@ -23,214 +23,191 @@ class PurchaseService:
     SUCCESS_RATE = 0.5  # 50% success rate
     MIN_LATENCY_MS = 50  # Minimum latency in milliseconds
     MAX_LATENCY_MS = 200  # Maximum latency in milliseconds
-    COMPENSATION_MIN_LATENCY_MS = 30
-    COMPENSATION_MAX_LATENCY_MS = 100
     
-    def __init__(self):
-        """Initialize the service."""
-        self.repository = PurchaseRepository
-    
-    def process_purchase(
-        self,
-        customer_id: int,
-        items: list
-    ) -> Dict[str, Any]:
-        """
-        Process a purchase using the Saga pattern.
-        Simulates random failures and latency.
-        
-        Args:
-            customer_id: ID of the customer
-            items: List of purchase items
-            
-        Returns:
-            Dict with status, purchase data, and error info if any
-        """
-        saga_id = str(uuid.uuid4())
-        
-        logger.info(
-            f"Starting Saga {saga_id} for customer {customer_id}"
-        )
-        
-        # Simulate network latency
+    @staticmethod
+    def _simulate_latency():
+        """Simulate network/processing latency."""
         latency_ms = random.randint(
-            self.MIN_LATENCY_MS,
-            self.MAX_LATENCY_MS
+            PurchaseService.MIN_LATENCY_MS,
+            PurchaseService.MAX_LATENCY_MS
         )
         time.sleep(latency_ms / 1000.0)
+        logger.debug(f"Simulated latency: {latency_ms}ms")
+    
+    @staticmethod
+    def _should_succeed() -> bool:
+        """Determine if operation should succeed (50% random)."""
+        return random.random() < PurchaseService.SUCCESS_RATE
+    
+    @transaction.atomic
+    def create_purchase(
+        self,
+        transaction_id: str,
+        user_id: str,
+        product_id: str,
+        payment_id: str,
+        amount: float
+    ) -> Dict[str, Any]:
+        """
+        Process a purchase transaction using Saga pattern.
+        Returns 200 (success) or 409 (conflict) randomly.
+        
+        Args:
+            transaction_id: Unique transaction ID from orchestrator
+            user_id: User/customer identifier
+            product_id: Product identifier
+            payment_id: Payment transaction identifier
+            amount: Purchase amount
+            
+        Returns:
+            Dict with status and purchase data or error info
+        """
+        logger.info(
+            f"Processing purchase transaction: {transaction_id} "
+            f"for user {user_id}"
+        )
+        
+        # Simulate network/processing latency
+        self._simulate_latency()
         
         try:
-            # Create purchase in pending status
-            purchase = self.repository.create_purchase(
-                customer_id=customer_id,
-                items=items,
-                saga_id=saga_id
+            # Check if transaction already exists (idempotency)
+            existing = Purchase.objects.filter(
+                transaction_id=transaction_id
+            ).first()
+            
+            if existing:
+                logger.warning(
+                    f"Transaction {transaction_id} already exists"
+                )
+                if existing.is_success():
+                    return {
+                        'status': 'success',
+                        'purchase_id': existing.id,
+                        'transaction_id': existing.transaction_id
+                    }
+                else:
+                    return {
+                        'status': 'error',
+                        'message': 'Purchase failed',
+                        'error': 'CONFLICT'
+                    }
+            
+            # Create purchase record
+            purchase = Purchase.objects.create(
+                transaction_id=transaction_id,
+                user_id=user_id,
+                product_id=product_id,
+                payment_id=payment_id,
+                amount=amount,
+                status=Purchase.STATUS_PENDING
             )
             
             logger.info(
-                f"Purchase {purchase.id} created for Saga {saga_id}"
+                f"Purchase {purchase.id} created for "
+                f"transaction {transaction_id}"
             )
             
-            # Simulate Saga orchestration - random success/failure
-            if random.random() < self.SUCCESS_RATE:
-                # Success path - confirm purchase
-                purchase.confirm()
+            # Simulate random success/failure (50%)
+            if self._should_succeed():
+                # Success path
+                purchase.mark_success()
                 logger.info(
-                    f"Saga {saga_id} succeeded. "
-                    f"Purchase {purchase.id} confirmed"
+                    f"Purchase {purchase.id} succeeded "
+                    f"(transaction {transaction_id})"
                 )
                 
                 return {
-                    'success': True,
-                    'status': 'confirmed',
+                    'status': 'success',
                     'purchase_id': purchase.id,
-                    'saga_id': saga_id,
-                    'message': 'Purchase processed successfully'
+                    'transaction_id': purchase.transaction_id
                 }
             else:
-                # Failure path - mark as failed
-                error_msg = (
-                    'Simulated failure: '
-                    'External service unavailable'
-                )
-                purchase.fail(error_msg)
+                # Failure path - mark as failed and return conflict
+                error_msg = 'Purchase failed'
+                purchase.mark_failed(error_msg)
                 logger.warning(
-                    f"Saga {saga_id} failed. "
-                    f"Purchase {purchase.id} marked as failed"
+                    f"Purchase {purchase.id} failed "
+                    f"(transaction {transaction_id})"
                 )
                 
                 return {
-                    'success': False,
-                    'status': 'failed',
-                    'purchase_id': purchase.id,
-                    'saga_id': saga_id,
+                    'status': 'error',
                     'message': error_msg,
-                    'error': 'SAGA_EXECUTION_FAILED'
+                    'error': 'CONFLICT'
                 }
                 
         except Exception as e:
             logger.error(
-                f"Error in Saga {saga_id}: {str(e)}",
+                f"Error processing transaction {transaction_id}: {str(e)}",
                 exc_info=True
             )
             return {
-                'success': False,
                 'status': 'error',
-                'saga_id': saga_id,
                 'message': f'Internal error: {str(e)}',
                 'error': 'INTERNAL_ERROR'
             }
     
-    def compensate_purchase(
+    @transaction.atomic
+    def cancel_purchase(
         self,
-        purchase_id: Optional[int] = None,
-        saga_id: Optional[str] = None
+        transaction_id: str
     ) -> Dict[str, Any]:
         """
-        Compensate (cancel) a purchase.
+        Cancel/compensate a purchase transaction.
         Part of the Saga compensation flow.
+        Always returns 200 OK.
         
         Args:
-            purchase_id: Purchase ID
-            saga_id: Saga ID (alternative to purchase_id)
+            transaction_id: Transaction ID to cancel
             
         Returns:
-            Dict with compensation result
+            Dict with cancellation result (always success)
         """
-        # Simulate compensation latency
-        latency_ms = random.randint(
-            self.COMPENSATION_MIN_LATENCY_MS,
-            self.COMPENSATION_MAX_LATENCY_MS
-        )
-        time.sleep(latency_ms / 1000.0)
+        logger.info(f"Cancelling purchase transaction: {transaction_id}")
+        
+        # Simulate network/processing latency
+        self._simulate_latency()
         
         try:
-            # Find purchase
-            if saga_id:
-                purchase = self.repository.get_by_saga_id(saga_id)
-            elif purchase_id:
-                purchase = self.repository.get_by_id(purchase_id)
-            else:
-                return {
-                    'success': False,
-                    'message': 'Purchase ID or Saga ID required',
-                    'error': 'MISSING_IDENTIFIER'
-                }
+            purchase = Purchase.objects.filter(
+                transaction_id=transaction_id
+            ).first()
             
             if not purchase:
+                logger.warning(
+                    f"Transaction {transaction_id} not found for "
+                    f"cancellation"
+                )
+                # Still return success for idempotency
                 return {
-                    'success': False,
-                    'message': 'Purchase not found',
-                    'error': 'NOT_FOUND'
+                    'status': 'success',
+                    'message': 'Purchase cancelled successfully',
+                    'transaction_id': transaction_id
                 }
-            
-            logger.info(
-                f"Compensating purchase {purchase.id} "
-                f"(Saga {purchase.saga_id})"
-            )
             
             # Cancel the purchase
-            success = self.repository.cancel_purchase(purchase.id)
+            purchase.cancel()
+            logger.info(
+                f"Purchase {purchase.id} cancelled "
+                f"(transaction {transaction_id})"
+            )
             
-            if success:
-                logger.info(
-                    f"Purchase {purchase.id} successfully compensated"
-                )
-                return {
-                    'success': True,
-                    'status': 'cancelled',
-                    'purchase_id': purchase.id,
-                    'saga_id': purchase.saga_id,
-                    'message': 'Purchase compensated successfully'
-                }
-            else:
-                logger.warning(
-                    f"Failed to compensate purchase {purchase.id}"
-                )
-                return {
-                    'success': False,
-                    'status': purchase.status,
-                    'purchase_id': purchase.id,
-                    'message': 'Cannot compensate purchase in current state',
-                    'error': 'INVALID_STATE'
-                }
-                
+            return {
+                'status': 'success',
+                'message': 'Purchase cancelled successfully',
+                'transaction_id': transaction_id
+            }
+            
         except Exception as e:
             logger.error(
-                f"Error compensating purchase: {str(e)}",
+                f"Error cancelling transaction {transaction_id}: {str(e)}",
                 exc_info=True
             )
+            # Even on error, return success for compensation
+            # to not break the Saga flow
             return {
-                'success': False,
-                'message': f'Compensation error: {str(e)}',
-                'error': 'COMPENSATION_ERROR'
+                'status': 'success',
+                'message': 'Purchase cancellation completed',
+                'transaction_id': transaction_id
             }
-    
-    def get_purchase(self, purchase_id: int) -> Optional[Purchase]:
-        """
-        Retrieve a purchase by ID.
-        
-        Args:
-            purchase_id: Purchase ID
-            
-        Returns:
-            Purchase instance or None
-        """
-        return self.repository.get_by_id(purchase_id)
-    
-    def get_customer_purchases(
-        self,
-        customer_id: int,
-        limit: int = 100
-    ) -> list:
-        """
-        Get all purchases for a customer.
-        
-        Args:
-            customer_id: Customer ID
-            limit: Maximum number of results
-            
-        Returns:
-            List of Purchase instances
-        """
-        return self.repository.get_by_customer(customer_id, limit)
