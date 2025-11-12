@@ -57,9 +57,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'ATOMIC_REQUESTS': True,
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'inventory_db'),
+        'USER': os.getenv('POSTGRES_USER', 'postgres'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
+        'HOST': os.getenv('POSTGRES_HOST', 'db'),
+        'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
 }
 
@@ -90,7 +93,7 @@ REST_FRAMEWORK = {
 }
 
 # Inventory service settings
-NO_STOCK_RATE = float(os.getenv('NO_STOCK_RATE', '0.3'))
+NO_STOCK_RATE = float(os.getenv('NO_STOCK_RATE', '0.1'))
 SIMULATE_LATENCY = os.getenv('SIMULATE_LATENCY', 'True') == 'True'
 MIN_LATENCY_MS = float(os.getenv('MIN_LATENCY_MS', '100'))
 MAX_LATENCY_MS = float(os.getenv('MAX_LATENCY_MS', '800'))
