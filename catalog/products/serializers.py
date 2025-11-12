@@ -34,3 +34,12 @@ class ProductSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Stock cannot be negative")
         return value
+
+
+class ProductRandomSerializer(serializers.ModelSerializer):
+    """Serializer específico para el endpoint /products/random"""
+    product_id = serializers.IntegerField(source='id', read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ['product_id', 'name', 'price', 'description', 'stock']
