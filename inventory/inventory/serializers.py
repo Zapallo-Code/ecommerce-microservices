@@ -5,24 +5,19 @@ from rest_framework import serializers
 
 
 class DecreaseInventorySerializer(serializers.Serializer):
-    """Serializer for decrease inventory request."""
-    operation_id = serializers.UUIDField(required=True)
-    product_id = serializers.IntegerField(required=True, min_value=1)
-    quantity = serializers.IntegerField(required=True, min_value=1)
-    metadata = serializers.JSONField(required=False, default=dict)
+    """Serializer compatible con orchestrator."""
+    product_id = serializers.CharField(max_length=255)
+    quantity = serializers.IntegerField(default=1, min_value=1)
 
 
-class CompensateInventorySerializer(serializers.Serializer):
-    """Serializer for compensate inventory request."""
-    operation_id = serializers.UUIDField(required=True)
-    product_id = serializers.IntegerField(required=True, min_value=1)
-    quantity = serializers.IntegerField(required=True, min_value=1)
-    metadata = serializers.JSONField(required=False, default=dict)
+class RestoreInventorySerializer(serializers.Serializer):
+    """Serializer para compensación."""
+    quantity = serializers.IntegerField(default=1, min_value=1)
 
 
 class InventorySerializer(serializers.Serializer):
     """Serializer for inventory response."""
-    product_id = serializers.IntegerField()
+    product_id = serializers.CharField()
     stock = serializers.IntegerField()
     reserved = serializers.IntegerField()
     available = serializers.IntegerField()
