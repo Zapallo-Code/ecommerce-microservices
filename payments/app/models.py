@@ -16,7 +16,13 @@ class Payment(models.Model):
     # Unique transaction ID for the payment
     transaction_id = models.CharField(max_length=255, unique=True, db_index=True, null=True, blank=True)
     
-    # Relation with the order (from purchases/orchestrator microservice)
+    # User ID (requerido por orchestrator)
+    user_id = models.CharField(max_length=100, db_index=True, null=True, blank=True)
+    
+    # Product ID (requerido por orchestrator)
+    product_id = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Relation with the order (from purchases/orchestrator microservice) - OPCIONAL
     order_id = models.CharField(max_length=100, db_index=True, null=True, blank=True)
     
     # Payment amount
