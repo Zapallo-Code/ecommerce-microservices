@@ -9,5 +9,7 @@ router.register(r'products', ProductViewSet, basename='product')
 # The API URLs are determined automatically by the router
 urlpatterns = [
     path('', include(router.urls)),
+    # Saga-specific endpoints
+    path('saga/products/', include('products.saga_urls')),
 ]
 
