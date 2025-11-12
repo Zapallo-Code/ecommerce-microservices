@@ -10,7 +10,7 @@ class Inventory(models.Model):
     Product inventory model.
     Manages stock levels for products.
     """
-    product_id = models.IntegerField(unique=True, db_index=True)
+    product_id = models.CharField(max_length=255, unique=True, db_index=True)
     stock = models.IntegerField(default=0)
     reserved = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
