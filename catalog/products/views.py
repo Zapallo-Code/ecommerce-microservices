@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Max
 from random import randint, uniform
+import random
 import time
 from .models import Product
 from .serializers import ProductSerializer, ProductRandomSerializer
@@ -77,9 +78,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         
         Raises:
             404: Si no hay productos disponibles en la base de datos
+            500: Simulación aleatoria de error interno del servidor (10% probabilidad)
         """
         # Simular latencia de procesamiento entre 0.1 y 0.5 segundos
         time.sleep(uniform(0.1, 0.5))
+        
+        # Simular error aleatorio con 10% de probabilidad
+        if random.random() < 0.1:
+            return Response(
+                {"error": "Simulated internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
         # Contar total de productos
         count = Product.objects.count()
