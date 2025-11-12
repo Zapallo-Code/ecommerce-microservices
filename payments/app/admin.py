@@ -11,6 +11,8 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = [
         'id',
         'transaction_id',
+        'user_id',
+        'product_id',
         'order_id',
         'amount',
         'status',
@@ -18,6 +20,6 @@ class PaymentAdmin(admin.ModelAdmin):
         'compensated_at'
     ]
     list_filter = ['status', 'created_at']
-    search_fields = ['transaction_id', 'order_id']
+    search_fields = ['transaction_id', 'user_id', 'product_id', 'order_id']
     readonly_fields = ['created_at', 'updated_at', 'compensated_at']
     ordering = ['-created_at']

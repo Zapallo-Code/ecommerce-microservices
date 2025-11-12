@@ -13,5 +13,5 @@ urlpatterns = [
     path("api/health/", health_check, name="health"),
     path(
         "", include("app.urls")
-    ),  # Endpoints at root level: /payment/ and /payment/compensate/
+    ),  # Endpoints: /payments and /payments/{payment_id}/refund
 ]
