@@ -1,0 +1,354 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:latest
+    container_name: ecommerce-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Remove port exposure - only internal access
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ecommerce-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Catalog Microservice
+  catalog:
+    build: 
+      context: ./catalog
+      dockerfile: Dockerfile
+    container_name: ecommerce-catalog
+    environment:
+      SECRET_KEY: ${CATALOG_SECRET_KEY}
+      DEBUG: "False"
+      POSTGRES_DB: ms_catalog
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      ALLOWED_HOSTS: ${CATALOG_ALLOWED_HOSTS:-*}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "${CATALOG_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HTTP Router
+      - "traefik.http.routers.catalog.rule=Host(`catalog.localhost`) || PathPrefix(`/catalog`)"
+      - "traefik.http.routers.catalog.entrypoints=web"
+      - "traefik.http.routers.catalog.service=catalog"
+      # Service
+      - "traefik.http.services.catalog.loadbalancer.server.port=8001"
+      # Health check
+      - "traefik.http.services.catalog.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.catalog.loadbalancer.healthcheck.interval=10s"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: 
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        /app/.venv/bin/gunicorn main.wsgi:application \
+          --bind 0.0.0.0:8001 \
+          --workers 4 \
+          --timeout 30 \
+          --access-logfile - \
+          --error-logfile - \
+          --log-level info
+
+  # Payments Microservice
+  payments:
+    build:
+      context: ./payments
+      dockerfile: Dockerfile
+    container_name: ecommerce-payments
+    environment:
+      SECRET_KEY: ${PAYMENTS_SECRET_KEY}
+      DEBUG: "False"
+      POSTGRES_DB: ms_payments
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      ALLOWED_HOSTS: ${PAYMENTS_ALLOWED_HOSTS:-*}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "${PAYMENTS_PORT:-8002}:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HTTP Router
+      - "traefik.http.routers.payments.rule=Host(`payments.localhost`) || PathPrefix(`/payments`)"
+      - "traefik.http.routers.payments.entrypoints=web"
+      - "traefik.http.routers.payments.service=payments"
+      # Service
+      - "traefik.http.services.payments.loadbalancer.server.port=8002"
+      # Health check
+      - "traefik.http.services.payments.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.payments.loadbalancer.healthcheck.interval=10s"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        /app/.venv/bin/gunicorn main.wsgi:application \
+          --bind 0.0.0.0:8002 \
+          --workers 4 \
+          --timeout 30 \
+          --access-logfile - \
+          --error-logfile - \
+          --log-level info
+
+  # Inventory Microservice
+  inventory:
+    build:
+      context: ./inventory
+      dockerfile: Dockerfile
+    container_name: ecommerce-inventory
+    environment:
+      SECRET_KEY: ${INVENTORY_SECRET_KEY}
+      DEBUG: "False"
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_DB: ms_inventory
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ALLOWED_HOSTS: ${INVENTORY_ALLOWED_HOSTS:-*}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "${INVENTORY_PORT:-8003}:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HTTP Router
+      - "traefik.http.routers.inventory.rule=Host(`inventory.localhost`) || PathPrefix(`/inventory`)"
+      - "traefik.http.routers.inventory.entrypoints=web"
+      - "traefik.http.routers.inventory.service=inventory"
+      # Service
+      - "traefik.http.services.inventory.loadbalancer.server.port=8003"
+      # Health check
+      - "traefik.http.services.inventory.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.inventory.loadbalancer.healthcheck.interval=10s"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        /app/.venv/bin/gunicorn config.wsgi:application \
+          --bind 0.0.0.0:8003 \
+          --workers 4 \
+          --timeout 30 \
+          --access-logfile - \
+          --error-logfile - \
+          --log-level info
+
+  # Purchases Microservice
+  purchases:
+    build:
+      context: ./purchases
+      dockerfile: Dockerfile
+    container_name: ecommerce-purchases
+    environment:
+      SECRET_KEY: ${PURCHASES_SECRET_KEY}
+      DEBUG: "False"
+      POSTGRES_DB: ms_purchases
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ALLOWED_HOSTS: ${PURCHASES_ALLOWED_HOSTS:-*}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "${PURCHASES_PORT:-8004}:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HTTP Router
+      - "traefik.http.routers.purchases.rule=Host(`purchases.localhost`) || PathPrefix(`/purchases`)"
+      - "traefik.http.routers.purchases.entrypoints=web"
+      - "traefik.http.routers.purchases.service=purchases"
+      # Service
+      - "traefik.http.services.purchases.loadbalancer.server.port=8004"
+      # Health check
+      - "traefik.http.services.purchases.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.purchases.loadbalancer.healthcheck.interval=10s"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        /app/.venv/bin/gunicorn main.wsgi:application \
+          --bind 0.0.0.0:8004 \
+          --workers 4 \
+          --timeout 30 \
+          --access-logfile - \
+          --error-logfile - \
+          --log-level info
+
+  # Saga Orchestrator
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: ecommerce-orchestrator
+    environment:
+      CATALOG_URL: http://catalog:8001
+      PAYMENTS_URL: http://payments:8002
+      INVENTORY_URL: http://inventory:8003
+      PURCHASES_URL: http://purchases:8004
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+      purchases:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HTTP Router
+      - "traefik.http.routers.orchestrator.rule=Host(`orchestrator.localhost`) || Host(`api.localhost`)"
+      - "traefik.http.routers.orchestrator.entrypoints=web"
+      - "traefik.http.routers.orchestrator.service=orchestrator"
+      # Service
+      - "traefik.http.services.orchestrator.loadbalancer.server.port=8000"
+      # Health check
+      - "traefik.http.services.orchestrator.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.orchestrator.loadbalancer.healthcheck.interval=10s"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ecommerce-network:
+    driver: bridge
+    name: ecommerce-network
+  traefik-public:
+    external: true
+    name: traefik-public
+
+volumes:
+  postgres_data:
+    name: ecommerce-postgres-data
