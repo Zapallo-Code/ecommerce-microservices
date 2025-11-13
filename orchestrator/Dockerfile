@@ -52,13 +52,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Run with Gunicorn + Uvicorn workers for production
-CMD ["gunicorn", "app.main:app", \
+CMD ["/app/.venv/bin/gunicorn", "app.main:app", \
     "--bind", "0.0.0.0:8000", \
-    "--workers", "${WORKERS}", \
-    "--worker-class", "${WORKER_CLASS}", \
-    "--timeout", "${TIMEOUT}", \
-    "--graceful-timeout", "${GRACEFUL_TIMEOUT}", \
-    "--keepalive", "${KEEPALIVE}", \
+    "--workers", "4", \
+    "--worker-class", "uvicorn.workers.UvicornWorker", \
+    "--timeout", "30", \
     "--access-logfile", "-", \
     "--error-logfile", "-", \
     "--log-level", "info"]

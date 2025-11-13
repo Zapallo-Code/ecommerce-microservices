@@ -66,13 +66,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Run with Gunicorn for production
-CMD ["gunicorn", "main.wsgi:application", \
+CMD ["/app/.venv/bin/gunicorn", "main.wsgi:application", \
     "--bind", "0.0.0.0:8001", \
-    "--workers", "${WORKERS}", \
-    "--worker-class", "${WORKER_CLASS}", \
-    "--timeout", "${TIMEOUT}", \
-    "--graceful-timeout", "${GRACEFUL_TIMEOUT}", \
-    "--keepalive", "${KEEPALIVE}", \
+    "--workers", "4", \
+    "--timeout", "30", \
     "--access-logfile", "-", \
     "--error-logfile", "-", \
     "--log-level", "info"]

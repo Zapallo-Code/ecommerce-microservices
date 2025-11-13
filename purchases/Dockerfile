@@ -43,7 +43,7 @@ RUN apk del .build-deps
 
 # Copy application code
 COPY --chown=appuser:appuser ./main /app/main
-COPY --chown=appuser:appuser ./products /app/products
+COPY --chown=appuser:appuser ./app /app/app
 COPY --chown=appuser:appuser ./manage.py /app/manage.py
 
 # Sync the project (install the project itself)
@@ -66,13 +66,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Run with Gunicorn for production
-CMD ["gunicorn", "main.wsgi:application", \
+CMD ["/app/.venv/bin/gunicorn", "main.wsgi:application", \
     "--bind", "0.0.0.0:8004", \
-    "--workers", "${WORKERS}", \
-    "--worker-class", "${WORKER_CLASS}", \
-    "--timeout", "${TIMEOUT}", \
-    "--graceful-timeout", "${GRACEFUL_TIMEOUT}", \
-    "--keepalive", "${KEEPALIVE}", \
+    "--workers", "4", \
+    "--timeout", "30", \
     "--access-logfile", "-", \
     "--error-logfile", "-", \
     "--log-level", "info"]
