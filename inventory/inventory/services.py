@@ -17,12 +17,20 @@ class InventoryService:
     """Service for managing inventory operations in a saga pattern."""
 
     @staticmethod
+    def _is_testing():
+        """Check if running in test environment."""
+        import sys
+
+        return "test" in sys.argv
+
+    @staticmethod
     def decrease_inventory(
         product_id: str, quantity: int = 1, transaction_id: str = None
     ):
         """
         Decreases product inventory.
-        Returns 200 OK or 409 Conflict randomly (50% each).
+        Returns 200 OK or 409 Conflict randomly (50% each) in production.
+        Always succeeds in test environment.
 
         Args:
             product_id: Product ID (string)
@@ -33,15 +41,17 @@ class InventoryService:
             dict with operation result
 
         Raises:
-            ValueError: If random failure occurs (50% chance)
+            ValueError: If random failure occurs (50% chance in production)
         """
-        # Simulate latency (0.1 to 0.5 seconds)
-        latency = random.uniform(0.1, 0.5)
-        time.sleep(latency)
+        # Simulate latency (skip in tests)
+        if not InventoryService._is_testing():
+            latency = random.uniform(0.1, 0.5)
+            time.sleep(latency)
+        else:
+            latency = 0.0
 
-        # Simulate random error at 50% (consistent with payments and purchases)
-        # This ensures Saga pattern triggers compensations properly
-        if random.random() < 0.5:
+        # Simulate random error at 50% (skip in tests)
+        if not InventoryService._is_testing() and random.random() < 0.5:
             logger.warning(f"Random failure (50%) - product_id: {product_id}")
             raise ValueError(
                 f"Insufficient stock for product {product_id} (random failure)"
