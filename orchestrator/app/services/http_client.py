@@ -27,7 +27,9 @@ class ServiceClient:
         try:
             await asyncio.sleep(settings.NETWORK_LATENCY_SIMULATION)
 
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=True
+            ) as client:
                 if method == "GET":
                     response = await client.get(url)
                 elif method == "POST":
