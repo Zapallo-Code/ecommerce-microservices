@@ -19,7 +19,7 @@ class CompensationService:
             logger.info(f"Offsetting payment {transaction.payment_id}")
             await self.client.call_service(
                 "payments",
-                f"/payments/{transaction.payment_id}/refund",
+                f"/payments/{transaction.payment_id}/refund/",
                 method="POST",
                 data={"reason": "Transaction failed"},
             )
@@ -36,7 +36,7 @@ class CompensationService:
             logger.info(f"Compensando inventario del producto {transaction.product_id}")
             await self.client.call_service(
                 "inventory",
-                f"/inventory/{transaction.product_id}/restore",
+                f"/inventory/{transaction.product_id}/restore/",
                 method="POST",
                 data={"quantity": 1},
             )
@@ -55,7 +55,7 @@ class CompensationService:
             )
             await self.client.call_service(
                 "purchases",
-                f"/purchases/{transaction.transaction_id}/cancel",
+                f"/api/purchases/{transaction.transaction_id}/cancel/",
                 method="DELETE",
             )
             return True

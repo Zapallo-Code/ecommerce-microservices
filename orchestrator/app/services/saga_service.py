@@ -32,7 +32,7 @@ class SagaService:
             f"[{transaction.transaction_id}] Step 1: Getting product from the catalog"
         )
         product_response = await self.client.call_service(
-            "catalog", "/products/random", method="GET"
+            "catalog", "/products/random/", method="GET"
         )
         transaction.product_id = (
             str(product_response.get("product_id"))
@@ -51,7 +51,7 @@ class SagaService:
             "product_id": transaction.product_id,
         }
         payment_response = await self.client.call_service(
-            "payments", "/payments", method="POST", data=payment_data
+            "payments", "/payments/", method="POST", data=payment_data
         )
         transaction.payment_id = (
             str(payment_response.get("payment_id"))
@@ -70,7 +70,7 @@ class SagaService:
         }
         await self.client.call_service(
             "inventory",
-            "/inventory/decrease",
+            "/inventory/decrease/",
             method="POST",
             data=inventory_data,
         )
@@ -88,7 +88,7 @@ class SagaService:
         }
         await self.client.call_service(
             "purchases",
-            "/purchases",
+            "/api/purchases/",
             method="POST",
             data=purchase_data,
         )
