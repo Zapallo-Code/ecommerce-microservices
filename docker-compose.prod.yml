@@ -70,7 +70,7 @@ services:
       # Service
       - "traefik.http.services.catalog.loadbalancer.server.port=8001"
       # Health check
-      - "traefik.http.services.catalog.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.catalog.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.catalog.loadbalancer.healthcheck.interval=10s"
     deploy:
       resources:
@@ -133,7 +133,7 @@ services:
       # Service
       - "traefik.http.services.payments.loadbalancer.server.port=8002"
       # Health check
-      - "traefik.http.services.payments.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.payments.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.payments.loadbalancer.healthcheck.interval=10s"
     deploy:
       resources:
@@ -197,7 +197,7 @@ services:
       # Service
       - "traefik.http.services.inventory.loadbalancer.server.port=8003"
       # Health check
-      - "traefik.http.services.inventory.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.inventory.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.inventory.loadbalancer.healthcheck.interval=10s"
     deploy:
       resources:
@@ -260,7 +260,7 @@ services:
       # Service
       - "traefik.http.services.purchases.loadbalancer.server.port=8004"
       # Health check
-      - "traefik.http.services.purchases.loadbalancer.healthcheck.path=/api/health/"
+      - "traefik.http.services.purchases.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.purchases.loadbalancer.healthcheck.interval=10s"
     deploy:
       resources:

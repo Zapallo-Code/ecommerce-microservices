@@ -58,7 +58,7 @@ EXPOSE 8003
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8003/api/health/ || exit 1
+    CMD curl -f http://localhost:8003/health/ || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

@@ -7,5 +7,5 @@ from inventory.views import HealthCheckView
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("inventory/", include("inventory.urls")),
-    path("api/health/", HealthCheckView.as_view(), name="health-check"),
+    path("health/", HealthCheckView.as_view(), name="health-check"),
 ]

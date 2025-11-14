@@ -29,7 +29,7 @@ class SagaService:
 
     async def _step_get_product(self, transaction: TransactionDetail) -> None:
         logger.info(
-            f"[{transaction.transaction_id}] Step 1: Getting product from the catalog"
+            f"[{transaction.transaction_id}] Step 1: Getting product from catalog"
         )
         product_response = await self.client.call_service(
             "catalog", "/products/random/", method="GET"
@@ -88,7 +88,7 @@ class SagaService:
         }
         await self.client.call_service(
             "purchases",
-            "/api/purchases/",
+            "/purchases/",
             method="POST",
             data=purchase_data,
         )
