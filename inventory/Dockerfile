@@ -1,0 +1,73 @@
+FROM python:3.14.0-alpine3.22
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH="/app/.venv/bin:$PATH" \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    # Django settings
+    DJANGO_SETTINGS_MODULE=config.settings \
+    # Production server settings
+    WORKERS=4 \
+    WORKER_CLASS=sync \
+    TIMEOUT=30 \
+    GRACEFUL_TIMEOUT=10 \
+    KEEPALIVE=5
+
+WORKDIR /app/
+
+# Install uv, dumb-init for proper signal handling, and PostgreSQL client libraries
+COPY --from=ghcr.io/astral-sh/uv:0.9.3 /uv /uvx /bin/
+RUN apk add --no-cache \
+    dumb-init \
+    curl \
+    postgresql-libs \
+    && apk add --no-cache --virtual .build-deps \
+    gcc \
+    musl-dev \
+    postgresql-dev
+
+# Create non-root user
+RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
+
+# Install dependencies (cacheable layer)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
+
+# Remove build dependencies
+RUN apk del .build-deps
+
+# Copy application code
+COPY --chown=appuser:appuser . /app/
+
+# Sync the project (install the project itself)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-dev
+
+# Switch to a non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8003
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8003/health/ || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Run with Gunicorn for production
+CMD ["/app/.venv/bin/gunicorn", "config.wsgi:application", \
+    "--bind", "0.0.0.0:8003", \
+    "--workers", "4", \
+    "--timeout", "30", \
+    "--access-logfile", "-", \
+    "--error-logfile", "-", \
+    "--log-level", "info"]

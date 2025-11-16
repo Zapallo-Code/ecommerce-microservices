@@ -1,0 +1,126 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:latest
+    container_name: ecommerce-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
+
+  # Catalog Microservice
+  catalog:
+    build: ./catalog
+    container_name: ecommerce-catalog
+    environment:
+      SECRET_KEY: ${CATALOG_SECRET_KEY:-django-insecure-key}
+      DEBUG: ${DEBUG:-False}
+      POSTGRES_DB: ms_catalog
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce-network
+
+  # Payments Microservice
+  payments:
+    build: ./payments
+    container_name: ecommerce-payments
+    environment:
+      SECRET_KEY: ${PAYMENTS_SECRET_KEY:-django-insecure-key}
+      DEBUG: ${DEBUG:-False}
+      POSTGRES_DB: ms_payments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce-network
+
+  # Inventory Microservice
+  inventory:
+    build: ./inventory
+    container_name: ecommerce-inventory
+    environment:
+      SECRET_KEY: ${INVENTORY_SECRET_KEY:-django-insecure-key}
+      DEBUG: ${DEBUG:-False}
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_DB: ms_inventory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    ports:
+      - "8003:8003"
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce-network
+
+  # Purchases Microservice
+  purchases:
+    build: ./purchases
+    container_name: ecommerce-purchases
+    environment:
+      SECRET_KEY: ${PURCHASES_SECRET_KEY:-django-insecure-key}
+      DEBUG: ${DEBUG:-False}
+      POSTGRES_DB: ms_purchases
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "8004:8004"
+    depends_on:
+      - postgres
+    networks:
+      - ecommerce-network
+
+  # Saga Orchestrator
+  orchestrator:
+    build: ./orchestrator
+    container_name: ecommerce-orchestrator
+    environment:
+      CATALOG_URL: http://catalog:8001
+      PAYMENTS_URL: http://payments:8002
+      INVENTORY_URL: http://inventory:8003
+      PURCHASES_URL: http://purchases:8004
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - catalog
+      - payments
+      - inventory
+      - purchases
+    networks:
+      - ecommerce-network
+
+networks:
+  ecommerce-network:
+    driver: bridge
+    name: ecommerce-network
+
+volumes:
+  postgres_data:
+    name: ecommerce-postgres-data
