@@ -4,12 +4,17 @@ Implements Saga pattern with simulated failures and latency.
 Follows SOLID principles and clean code practices.
 """
 
-import random
-import time
 import logging
-from typing import Dict, Any
+import os
+import random
+import sys
+import time
+from typing import Any
+
 from django.db import transaction
+
 from app.models import Purchase
+from app.repositories import PurchaseRepository
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +30,38 @@ class PurchaseService:
     MIN_LATENCY_MS = 50  # Minimum latency in milliseconds
     MAX_LATENCY_MS = 200  # Maximum latency in milliseconds
 
-    @staticmethod
-    def _is_testing():
+    @classmethod
+    def _is_testing(cls) -> bool:
         """Check if running in test environment."""
-        import sys
-
-        return "test" in sys.argv
-
-    @staticmethod
-    def _simulate_latency():
-        """Simulate network/processing latency (skip in tests)."""
-        if PurchaseService._is_testing():
-            return
-        latency_ms = random.randint(
-            PurchaseService.MIN_LATENCY_MS, PurchaseService.MAX_LATENCY_MS
+        # Check multiple test environment indicators
+        return (
+            "test" in sys.argv
+            or "pytest" in sys.modules
+            or os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(
+                "test_settings"
+            )
+            or "PYTEST_CURRENT_TEST" in os.environ
         )
+
+    @classmethod
+    def _simulate_latency(cls) -> None:
+        """Simulate network/processing latency (skip in tests)."""
+        if cls._is_testing():
+            return
+        latency_ms = random.randint(cls.MIN_LATENCY_MS, cls.MAX_LATENCY_MS)
         time.sleep(latency_ms / 1000.0)
         logger.debug(f"Simulated latency: {latency_ms}ms")
 
-    @staticmethod
-    def _should_succeed() -> bool:
-        """Determine if operation should succeed (always true in tests, 50% random otherwise)."""
-        if PurchaseService._is_testing():
+    @classmethod
+    def _should_succeed(cls) -> bool:
+        """
+        Determine if operation should succeed.
+        
+        Always true in tests, 50% random otherwise.
+        """
+        if cls._is_testing():
             return True
-        return random.random() < PurchaseService.SUCCESS_RATE
+        return random.random() < cls.SUCCESS_RATE
 
     @transaction.atomic
     def create_purchase(
@@ -59,7 +72,7 @@ class PurchaseService:
         payment_id: str,
         amount: float,
         quantity: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Process a purchase transaction using Saga pattern.
         Returns 200 (success) or 409 (conflict) randomly.
@@ -83,11 +96,11 @@ class PurchaseService:
 
         try:
             # Check if transaction already exists (idempotency)
-            existing = Purchase.objects.filter(transaction_id=transaction_id).first()
+            existing = PurchaseRepository.get_by_transaction_id(transaction_id)
 
             if existing:
                 logger.warning(f"Transaction {transaction_id} already exists")
-                if existing.is_success():
+                if existing.is_success:  # Property, not method
                     return {
                         "status": "success",
                         "purchase_id": existing.id,
@@ -101,13 +114,13 @@ class PurchaseService:
                     }
 
             # Create purchase record
-            purchase = Purchase.objects.create(
+            purchase = PurchaseRepository.create(
                 transaction_id=transaction_id,
                 user_id=user_id,
                 product_id=product_id,
-                quantity=quantity,
                 payment_id=payment_id,
                 amount=amount,
+                quantity=quantity,
                 status=Purchase.STATUS_PENDING,
             )
 
@@ -150,7 +163,7 @@ class PurchaseService:
             }
 
     @transaction.atomic
-    def cancel_purchase(self, transaction_id: str) -> Dict[str, Any]:
+    def cancel_purchase(self, transaction_id: str) -> dict[str, Any]:
         """
         Cancel/compensate a purchase transaction.
         Part of the Saga compensation flow.
@@ -168,7 +181,7 @@ class PurchaseService:
         self._simulate_latency()
 
         try:
-            purchase = Purchase.objects.filter(transaction_id=transaction_id).first()
+            purchase = PurchaseRepository.get_by_transaction_id(transaction_id)
 
             if not purchase:
                 logger.warning(

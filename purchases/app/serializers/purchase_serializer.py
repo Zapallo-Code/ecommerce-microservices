@@ -4,6 +4,7 @@ Handles request/response serialization and validation for Saga pattern.
 """
 
 from decimal import Decimal
+
 from rest_framework import serializers
 
 
@@ -30,22 +31,10 @@ class PurchaseRequestSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, min_value=Decimal("0.01")
     )
 
-    def validate_amount(self, value):
-        """Validate that amount is positive."""
-        if value <= 0:
-            raise serializers.ValidationError("Amount must be greater than zero")
-        return value
-
-    def validate_quantity(self, value):
-        """Validate that quantity is positive."""
-        if value <= 0:
-            raise serializers.ValidationError("Quantity must be greater than zero")
-        return value
-
 
 class PurchaseSuccessResponseSerializer(serializers.Serializer):
     """
-    Serializer for successful purchase response (200 OK).
+    Serializer for successful purchase response (201 CREATED).
 
     Response format:
     {
@@ -55,14 +44,14 @@ class PurchaseSuccessResponseSerializer(serializers.Serializer):
     }
     """
 
-    status = serializers.CharField(default="success")
+    status = serializers.CharField()
     purchase_id = serializers.IntegerField(source="id")
     transaction_id = serializers.CharField()
 
 
 class PurchaseErrorResponseSerializer(serializers.Serializer):
     """
-    Serializer for failed purchase response (409 Conflict).
+    Serializer for failed purchase response (409 CONFLICT).
 
     Response format:
     {
@@ -72,7 +61,7 @@ class PurchaseErrorResponseSerializer(serializers.Serializer):
     }
     """
 
-    status = serializers.CharField(default="error")
+    status = serializers.CharField()
     message = serializers.CharField()
     error = serializers.CharField()
 
