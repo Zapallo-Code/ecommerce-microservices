@@ -19,7 +19,6 @@ class PaymentModelTest(TestCase):
         """Set up test data for each test method"""
         self.payment = Payment.objects.create(
             transaction_id='TXN-TEST-001',
-            order_id='ORDER-123',
             amount=Decimal('1500.50'),
             status=Payment.Status.SUCCESS,
             message='Test payment'
@@ -28,7 +27,6 @@ class PaymentModelTest(TestCase):
     def test_create_payment(self):
         """Test creating a payment with all fields"""
         self.assertEqual(self.payment.transaction_id, 'TXN-TEST-001')
-        self.assertEqual(self.payment.order_id, 'ORDER-123')
         self.assertEqual(self.payment.amount, Decimal('1500.50'))
         self.assertEqual(self.payment.status, Payment.Status.SUCCESS)
         self.assertEqual(self.payment.message, 'Test payment')
@@ -56,7 +54,6 @@ class PaymentModelTest(TestCase):
         """Test that metadata field defaults to empty dictionary"""
         payment = Payment.objects.create(
             transaction_id='TXN-002',
-            order_id='ORDER-456'
         )
         self.assertEqual(payment.metadata, {})
         
@@ -64,7 +61,6 @@ class PaymentModelTest(TestCase):
         """Test storing custom data in metadata JSONField"""
         payment = Payment.objects.create(
             transaction_id='TXN-003',
-            order_id='ORDER-789',
             amount=Decimal('2000.00'),
             status=Payment.Status.SUCCESS,
             metadata={
@@ -84,7 +80,6 @@ class PaymentModelTest(TestCase):
         with self.assertRaises(IntegrityError):
             Payment.objects.create(
                 transaction_id='TXN-TEST-001',  # Duplicate
-                order_id='ORDER-002',
                 amount=Decimal('200.00')
             )
 
@@ -136,7 +131,6 @@ class PaymentAPITest(TestCase):
         response = self.client.post(
             '/payments/',
             data=json.dumps({
-                'order_id': 'ORDER-API-002',
                 'amount': 'invalid'  # Invalid amount format
             }),
             content_type='application/json'
@@ -167,7 +161,6 @@ class PaymentAPITest(TestCase):
         # Create a payment first
         payment = Payment.objects.create(
             transaction_id='TXN-REFUND-001',
-            order_id='ORDER-REFUND-001',
             amount=Decimal('1000.00'),
             status=Payment.Status.SUCCESS
         )
