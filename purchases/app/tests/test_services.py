@@ -3,7 +3,6 @@ Tests for Purchase service layer.
 Tests business logic and Saga pattern implementation.
 """
 
-from unittest.mock import patch
 from django.test import TestCase
 from app.models.purchase import Purchase
 from app.services.purchase_service import PurchaseService
@@ -37,7 +36,9 @@ class PurchaseServiceTests(TestCase):
         self.assertEqual(purchase.status, Purchase.STATUS_SUCCESS)
 
     def test_create_purchase_idempotency_success(self):
-        """Test idempotent behavior when purchase already exists with success status."""
+        """
+        Test idempotent behavior with existing successful purchase.
+        """
         # Create first purchase
         Purchase.objects.create(
             transaction_id="idempotent-001",
@@ -63,7 +64,9 @@ class PurchaseServiceTests(TestCase):
         self.assertEqual(result["transaction_id"], "idempotent-001")
 
     def test_create_purchase_idempotency_failed(self):
-        """Test idempotent behavior when purchase already exists with failed status."""
+        """
+        Test idempotent behavior with existing failed purchase.
+        """
         # Create failed purchase
         Purchase.objects.create(
             transaction_id="idempotent-failed-001",
@@ -86,7 +89,11 @@ class PurchaseServiceTests(TestCase):
         )
         
         self.assertEqual(result["status"], "error")
-        self.assertEqual(result["message"], "Purchase failed")
+        self.assertEqual(
+            result["message"],
+            "Transaction already exists with status: failed"
+        )
+        self.assertEqual(result["current_status"], Purchase.STATUS_FAILED)
 
     def test_cancel_purchase_success(self):
         """Test successful purchase cancellation."""
@@ -113,9 +120,11 @@ class PurchaseServiceTests(TestCase):
     def test_cancel_purchase_not_found(self):
         """Test cancelling non-existent purchase (idempotent behavior)."""
         result = self.service.cancel_purchase("nonexistent-999")
-        
+
         self.assertEqual(result["status"], "success")
-        self.assertIn("cancelled successfully", result["message"])
+        self.assertEqual(
+            result["message"], "Purchase not found or already cancelled"
+        )
 
     def test_cancel_already_cancelled(self):
         """Test cancelling already cancelled purchase (idempotent)."""
