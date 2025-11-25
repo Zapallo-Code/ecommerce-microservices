@@ -29,8 +29,13 @@ class ProductRandomSerializer(serializers.ModelSerializer):
     """
     
     product_id = serializers.IntegerField(source='id', read_only=True)
-    price = serializers.CharField(source='price', read_only=True)  # Return as string for consistency
     
     class Meta:
         model = Product
         fields = ['product_id', 'name', 'description', 'price', 'category', 'stock']
+    
+    def to_representation(self, instance):
+        """Convert price to string for consistency."""
+        data = super().to_representation(instance)
+        data['price'] = str(data['price'])
+        return data
