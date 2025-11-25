@@ -3,7 +3,9 @@ Tests for the Purchase repository layer.
 Tests data access operations and queries.
 """
 
+from django.db.models import QuerySet
 from django.test import TestCase
+
 from app.models.purchase import Purchase
 from app.repositories.purchase_repository import PurchaseRepository
 
@@ -94,8 +96,12 @@ class PurchaseRepositoryTests(TestCase):
         
         self.assertEqual(len(purchases), 3)
 
-    def test_get_by_user_returns_list(self):
-        """Test that get_by_user returns a list."""
+    def test_get_by_user_returns_queryset(self):
+        """Test that get_by_user returns a QuerySet (lazy evaluation)."""
         purchases = self.repository.get_by_user("user-123")
         
-        self.assertIsInstance(purchases, list)
+        # Should return QuerySet, not list (better performance)
+        self.assertIsInstance(purchases, QuerySet)
+        
+        # But should be iterable and countable
+        self.assertEqual(len(purchases), 2)
