@@ -3,6 +3,8 @@ Repository layer for Purchase entity (simplified Saga pattern).
 Provides data access abstraction following the Repository pattern.
 """
 
+from decimal import Decimal
+
 from django.db.models import QuerySet
 
 from app.models import Purchase
@@ -59,7 +61,7 @@ class PurchaseRepository:
         user_id: str,
         product_id: str,
         payment_id: str,
-        amount: float,
+        amount: Decimal,
         quantity: int = 1,
         status: str | None = None,
     ) -> Purchase:
@@ -75,15 +77,17 @@ class PurchaseRepository:
             quantity: Quantity of items (default: 1)
             status: Initial status (default: PENDING)
 
-        Returns:
+            Returns:
             Created Purchase instance
         """
-        return Purchase.objects.create(
-            transaction_id=transaction_id,
-            user_id=user_id,
-            product_id=product_id,
-            payment_id=payment_id,
-            amount=amount,
-            quantity=quantity,
-            status=status if status else Purchase.STATUS_PENDING,
-        )
+        kwargs = {
+            "transaction_id": transaction_id,
+            "user_id": user_id,
+            "product_id": product_id,
+            "payment_id": payment_id,
+            "amount": amount,
+            "quantity": quantity,
+        }
+        if status is not None:
+            kwargs["status"] = status
+        return Purchase.objects.create(**kwargs)
