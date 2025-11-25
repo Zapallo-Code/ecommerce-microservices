@@ -22,9 +22,6 @@ class Payment(models.Model):
     # Product ID (requerido por orchestrator)
     product_id = models.CharField(max_length=100, null=True, blank=True)
     
-    # Relation with the order (from purchases/orchestrator microservice) - OPCIONAL
-    order_id = models.CharField(max_length=100, db_index=True, null=True, blank=True)
-    
     # Payment amount
     amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     
@@ -53,7 +50,6 @@ class Payment(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['transaction_id']),
-            models.Index(fields=['order_id', 'status']),
             models.Index(fields=['-created_at']),
         ]
 
