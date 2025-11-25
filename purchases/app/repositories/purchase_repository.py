@@ -3,8 +3,6 @@ Repository layer for Purchase entity (simplified Saga pattern).
 Provides data access abstraction following the Repository pattern.
 """
 
-from __future__ import annotations
-
 from django.db.models import QuerySet
 
 from app.models import Purchase

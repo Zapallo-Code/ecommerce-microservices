@@ -4,24 +4,69 @@ Implements REST API for purchase operations with Saga pattern.
 Uses APIView instead of ViewSet for cleaner endpoint definitions.
 """
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
+import logging
+from typing import Any
+
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-import logging
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from app.services.purchase_service import PurchaseService
 from app.serializers.purchase_serializer import (
+    CancelResponseSerializer,
+    PurchaseErrorResponseSerializer,
     PurchaseRequestSerializer,
     PurchaseSuccessResponseSerializer,
-    PurchaseErrorResponseSerializer,
-    CancelResponseSerializer,
 )
+from app.services.purchase_service import PurchaseService
 
 logger = logging.getLogger(__name__)
 
 
-class PurchaseCreateView(APIView):
+class BasePurchaseView(APIView):
+    """
+    Base view for purchase operations.
+    Provides common functionality following DRY principle.
+    """
+
+    permission_classes = [AllowAny]
+    service_class = PurchaseService
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._service: PurchaseService | None = None
+
+    @property
+    def service(self) -> PurchaseService:
+        """Lazy initialization of service (improves performance)."""
+        if self._service is None:
+            self._service = self.service_class()
+        return self._service
+
+    def _build_response(
+        self,
+        serializer_class: type,
+        data: dict[str, Any],
+        status_code: int,
+    ) -> Response:
+        """
+        Build and validate response (DRY helper method).
+
+        Args:
+            serializer_class: Serializer class to use
+            data: Data to serialize
+            status_code: HTTP status code
+
+        Returns:
+            Response object with serialized data
+        """
+        serializer = serializer_class(data=data)
+        serializer.is_valid(raise_exception=False)
+        return Response(serializer.data, status=status_code)
+
+
+class PurchaseCreateView(BasePurchaseView):
     """
     API endpoint for creating a purchase transaction.
     POST /purchases
@@ -30,13 +75,7 @@ class PurchaseCreateView(APIView):
     Returns 200 OK for success or 409 Conflict for failure.
     """
 
-    permission_classes = [AllowAny]
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.service = PurchaseService()
-
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         """
         Create a new purchase transaction.
 
@@ -66,7 +105,7 @@ class PurchaseCreateView(APIView):
         # Validate request
         serializer = PurchaseRequestSerializer(data=request.data)
         if not serializer.is_valid():
-            logger.warning(f"Invalid purchase request: {serializer.errors}")
+            logger.warning("Invalid purchase request: %s", serializer.errors)
             return Response(
                 {
                     "status": "error",
@@ -89,24 +128,26 @@ class PurchaseCreateView(APIView):
 
         # Return response based on result
         if result["status"] == "success":
-            # Success path - return 201 CREATED
-            response_serializer = PurchaseSuccessResponseSerializer(data=result)
-            response_serializer.is_valid()
+            logger.info(
+                "Purchase created successfully: %s", result["transaction_id"]
+            )
+            return self._build_response(
+                PurchaseSuccessResponseSerializer,
+                result,
+                status.HTTP_201_CREATED,
+            )
 
-            logger.info(f"Purchase created successfully: {result['transaction_id']}")
-
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            # Failure path - return 409 Conflict
-            response_serializer = PurchaseErrorResponseSerializer(data=result)
-            response_serializer.is_valid()
-
-            logger.warning(f"Purchase failed: {result.get('transaction_id', 'N/A')}")
-
-            return Response(response_serializer.data, status=status.HTTP_409_CONFLICT)
+        logger.warning(
+            "Purchase failed: %s", result.get("transaction_id", "N/A")
+        )
+        return self._build_response(
+            PurchaseErrorResponseSerializer,
+            result,
+            status.HTTP_409_CONFLICT,
+        )
 
 
-class PurchaseCancelView(APIView):
+class PurchaseCancelView(BasePurchaseView):
     """
     API endpoint for cancelling a purchase (compensation).
     DELETE /purchases/<transaction_id>/cancel
@@ -115,13 +156,7 @@ class PurchaseCancelView(APIView):
     Always returns 200 OK.
     """
 
-    permission_classes = [AllowAny]
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.service = PurchaseService()
-
-    def delete(self, request, transaction_id):
+    def delete(self, request: Request, transaction_id: str) -> Response:
         """
         Cancel a purchase transaction (compensation).
 
@@ -135,16 +170,16 @@ class PurchaseCancelView(APIView):
             "transaction_id": "uuid"
         }
         """
-        logger.info(f"Cancellation requested for: {transaction_id}")
+        logger.info("Cancellation requested for: %s", transaction_id)
 
         # Execute cancellation
         result = self.service.cancel_purchase(transaction_id)
 
-        # Serialize response
-        response_serializer = CancelResponseSerializer(data=result)
-        response_serializer.is_valid()
-
-        logger.info(f"Cancellation completed for: {transaction_id}")
+        logger.info("Cancellation completed for: %s", transaction_id)
 
         # Always return 200 OK for compensation
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return self._build_response(
+            CancelResponseSerializer,
+            result,
+            status.HTTP_200_OK,
+        )

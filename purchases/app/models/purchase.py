@@ -4,8 +4,6 @@ Implements the Purchase entity for Saga pattern orchestration.
 Simplified model according to KISS and SOLID principles.
 """
 
-from __future__ import annotations
-
 from enum import StrEnum
 
 from django.db import models

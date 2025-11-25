@@ -4,8 +4,6 @@ Implements Saga pattern with simulated failures and latency.
 Follows SOLID principles and clean code practices.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import random
