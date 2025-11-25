@@ -9,11 +9,11 @@ import os
 import random
 import sys
 import time
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
 
-from app.models import Purchase
 from app.repositories import PurchaseRepository
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class PurchaseService:
             return
         latency_ms = random.randint(cls.MIN_LATENCY_MS, cls.MAX_LATENCY_MS)
         time.sleep(latency_ms / 1000.0)
-        logger.debug(f"Simulated latency: {latency_ms}ms")
+        logger.debug("Simulated latency: %sms", latency_ms)
 
     @classmethod
     def _should_succeed(cls) -> bool:
@@ -70,12 +70,12 @@ class PurchaseService:
         user_id: str,
         product_id: str,
         payment_id: str,
-        amount: float,
+        amount: Decimal,
         quantity: int = 1,
     ) -> dict[str, Any]:
         """
         Process a purchase transaction using Saga pattern.
-        Returns 200 (success) or 409 (conflict) randomly.
+        Returns 201 (success) or 409 (conflict) randomly.
 
         Args:
             transaction_id: Unique transaction ID from orchestrator
@@ -88,7 +88,9 @@ class PurchaseService:
             Dict with status and purchase data or error info
         """
         logger.info(
-            f"Processing purchase transaction: {transaction_id} for user {user_id}"
+            "Processing purchase transaction: %s for user %s",
+            transaction_id,
+            user_id,
         )
 
         # Simulate network/processing latency
@@ -99,18 +101,28 @@ class PurchaseService:
             existing = PurchaseRepository.get_by_transaction_id(transaction_id)
 
             if existing:
-                logger.warning(f"Transaction {transaction_id} already exists")
+                logger.warning(
+                    "Transaction %s already exists with status: %s",
+                    transaction_id,
+                    existing.status,
+                )
+                # Return existing successful transaction
                 if existing.is_success:  # Property, not method
                     return {
                         "status": "success",
                         "purchase_id": existing.id,
                         "transaction_id": existing.transaction_id,
                     }
+                # Return error with actual current status
                 else:
+                    msg = "Transaction already exists with status: {}".format(
+                        existing.status
+                    )
                     return {
                         "status": "error",
-                        "message": "Purchase failed",
+                        "message": msg,
                         "error": "CONFLICT",
+                        "current_status": existing.status,
                     }
 
             # Create purchase record
@@ -121,11 +133,12 @@ class PurchaseService:
                 payment_id=payment_id,
                 amount=amount,
                 quantity=quantity,
-                status=Purchase.STATUS_PENDING,
             )
 
             logger.info(
-                f"Purchase {purchase.id} created for transaction {transaction_id}"
+                "Purchase %s created for transaction %s",
+                purchase.id,
+                transaction_id,
             )
 
             # Simulate random success/failure (50%)
@@ -133,7 +146,9 @@ class PurchaseService:
                 # Success path
                 purchase.mark_success()
                 logger.info(
-                    f"Purchase {purchase.id} succeeded (transaction {transaction_id})"
+                    "Purchase %s succeeded (transaction %s)",
+                    purchase.id,
+                    transaction_id,
                 )
 
                 return {
@@ -146,19 +161,27 @@ class PurchaseService:
                 error_msg = "Purchase failed"
                 purchase.mark_failed(error_msg)
                 logger.warning(
-                    f"Purchase {purchase.id} failed (transaction {transaction_id})"
+                    "Purchase %s failed (transaction %s)",
+                    purchase.id,
+                    transaction_id,
                 )
 
-                return {"status": "error", "message": error_msg, "error": "CONFLICT"}
+                return {
+                    "status": "error",
+                    "message": error_msg,
+                    "error": "CONFLICT",
+                }
 
         except Exception as e:
             logger.error(
-                f"Error processing transaction {transaction_id}: {str(e)}",
+                "Error processing transaction %s: %s",
+                transaction_id,
+                str(e),
                 exc_info=True,
             )
             return {
                 "status": "error",
-                "message": f"Internal error: {str(e)}",
+                "message": "Internal error: {}".format(str(e)),
                 "error": "INTERNAL_ERROR",
             }
 
@@ -175,7 +198,9 @@ class PurchaseService:
         Returns:
             Dict with cancellation result (always success)
         """
-        logger.info(f"Cancelling purchase transaction: {transaction_id}")
+        logger.info(
+            "Cancelling purchase transaction: %s", transaction_id
+        )
 
         # Simulate network/processing latency
         self._simulate_latency()
@@ -185,7 +210,8 @@ class PurchaseService:
 
             if not purchase:
                 logger.warning(
-                    f"Transaction {transaction_id} not found for cancellation"
+                    "Transaction %s not found for cancellation",
+                    transaction_id,
                 )
                 # Still return success for idempotency
                 return {
@@ -197,7 +223,9 @@ class PurchaseService:
             # Cancel the purchase
             purchase.cancel()
             logger.info(
-                f"Purchase {purchase.id} cancelled (transaction {transaction_id})"
+                "Purchase %s cancelled (transaction %s)",
+                purchase.id,
+                transaction_id,
             )
 
             return {
@@ -208,7 +236,9 @@ class PurchaseService:
 
         except Exception as e:
             logger.error(
-                f"Error cancelling transaction {transaction_id}: {str(e)}",
+                "Error cancelling transaction %s: %s",
+                transaction_id,
+                str(e),
                 exc_info=True,
             )
             # Even on error, return success for compensation

@@ -135,10 +135,18 @@ class PurchaseSuccessResponseSerializerTests(TestCase):
             payment_id="pay-789",
             status=Purchase.STATUS_SUCCESS,
         )
-        
-        serializer = PurchaseSuccessResponseSerializer(purchase)
-        data = serializer.data
-        
+
+        # The serializer expects a dict, not a model instance
+        response_data = {
+            "status": "success",
+            "purchase_id": purchase.id,
+            "transaction_id": purchase.transaction_id,
+        }
+
+        serializer = PurchaseSuccessResponseSerializer(data=response_data)
+        self.assertTrue(serializer.is_valid())
+
+        data = serializer.validated_data
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["purchase_id"], purchase.id)
         self.assertEqual(data["transaction_id"], "txn-success-001")

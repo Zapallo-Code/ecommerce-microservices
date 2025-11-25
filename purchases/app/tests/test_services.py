@@ -86,7 +86,11 @@ class PurchaseServiceTests(TestCase):
         )
         
         self.assertEqual(result["status"], "error")
-        self.assertEqual(result["message"], "Purchase failed")
+        self.assertEqual(
+            result["message"],
+            "Transaction already exists with status: failed"
+        )
+        self.assertEqual(result["current_status"], Purchase.STATUS_FAILED)
 
     def test_cancel_purchase_success(self):
         """Test successful purchase cancellation."""
