@@ -4,12 +4,17 @@ Simplified implementation following KISS principle.
 Only provides the random product endpoint required by Saga orchestrator.
 """
 
+import logging
 import random
 import time
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import DatabaseError
 from .models import Product
+from .serializers import ProductRandomSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class RandomProductView(APIView):
@@ -28,37 +33,55 @@ class RandomProductView(APIView):
         Returns a random product.
         Always succeeds (status 200).
         """
-        # Simulate latency (0.1 to 0.5 seconds)
-        time.sleep(random.uniform(0.1, 0.5))
+        start_time = time.time()
+        logger.info("Random product request received")
+        
+        try:
+            # Simulate latency (0.1 to 0.5 seconds)
+            latency = random.uniform(0.1, 0.5)
+            time.sleep(latency)
+            logger.debug(f"Simulated latency: {latency:.3f}s")
 
-        # Get all active products with stock
-        products = Product.objects.filter(is_active=True, stock__gt=0)
+            # Get all active products with stock
+            products = Product.objects.filter(is_active=True, stock__gt=0)
+            product_count = products.count()
+            logger.info(f"Found {product_count} active products with stock")
 
-        if not products.exists():
-            # If no products, create a random one
-            product = Product.objects.create(
-                name=f"Product-{random.randint(1000, 9999)}",
-                description=f"Random product description {random.randint(1, 100)}",
-                price=round(random.uniform(10.0, 500.0), 2),
-                category=random.choice(
-                    ["Electronics", "Clothing", "Books", "Food", "Toys"]
-                ),
-                stock=random.randint(10, 100),
-                is_active=True,
+            if not products.exists():
+                # If no products, create a random one
+                logger.warning("No products found, creating random product")
+                product = Product.objects.create(
+                    name=f"Product-{random.randint(1000, 9999)}",
+                    description=f"Random product description {random.randint(1, 100)}",
+                    price=round(random.uniform(10.0, 500.0), 2),
+                    category=random.choice(
+                        ["Electronics", "Clothing", "Books", "Food", "Toys"]
+                    ),
+                    stock=random.randint(10, 100),
+                    is_active=True,
+                )
+                logger.info(f"Created new product: {product.id} - {product.name}")
+            else:
+                # Select random product from existing ones
+                product = random.choice(list(products))
+                logger.info(f"Selected product: {product.id} - {product.name}")
+
+            elapsed_time = time.time() - start_time
+            logger.info(f"Random product request completed in {elapsed_time:.3f}s")
+
+            # Return product data using serializer
+            serializer = ProductRandomSerializer(product)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except DatabaseError as e:
+            logger.error(f"Database error in random product: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Database error occurred", "detail": "Unable to retrieve product"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        else:
-            # Select random product from existing ones
-            product = random.choice(list(products))
-
-        # Return product data
-        return Response(
-            {
-                "product_id": product.id,
-                "name": product.name,
-                "description": product.description,
-                "price": str(product.price),
-                "category": product.category,
-                "stock": product.stock,
-            },
-            status=status.HTTP_200_OK,
-        )
+        except Exception as e:
+            logger.error(f"Unexpected error in random product: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
