@@ -88,7 +88,6 @@ class PaymentSerializer(serializers.ModelSerializer):
             'transaction_id',
             'user_id',
             'product_id',
-            'order_id',
             'amount',
             'status',
             'status_display',
