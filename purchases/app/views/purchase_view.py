@@ -72,7 +72,7 @@ class PurchaseCreateView(BasePurchaseView):
     POST /purchases
 
     Implements Saga pattern with random success/failure (50%).
-    Returns 200 OK for success or 409 Conflict for failure.
+    Returns 201 CREATED for success or 409 CONFLICT for failure.
     """
 
     def post(self, request: Request) -> Response:
@@ -85,17 +85,18 @@ class PurchaseCreateView(BasePurchaseView):
             "user_id": "string",
             "product_id": "string",
             "payment_id": "string",
-            "amount": 100.50
+            "amount": 100.50,
+            "quantity": 1  // optional, defaults to 1
         }
 
-        Response 200 OK:
+        Response 201 CREATED:
         {
             "status": "success",
             "purchase_id": "generated-id",
             "transaction_id": "uuid"
         }
 
-        Response 409 Conflict:
+        Response 409 CONFLICT:
         {
             "status": "error",
             "message": "Purchase failed",
@@ -156,7 +157,7 @@ class PurchaseCancelView(BasePurchaseView):
     Always returns 200 OK.
     """
 
-    def delete(self, request: Request, transaction_id: str) -> Response:
+    def delete(self, _request: Request, transaction_id: str) -> Response:
         """
         Cancel a purchase transaction (compensation).
 
