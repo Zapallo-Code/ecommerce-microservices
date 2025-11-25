@@ -66,18 +66,21 @@ class PurchaseRepository:
         status: str | None = None,
     ) -> Purchase:
         """
-        Create a new purchase.
+        Create a new purchase record.
+
+        Note: No validation of user_id/product_id performed here.
+        The Saga orchestrator validates these before calling this service.
 
         Args:
             transaction_id: Unique transaction ID from orchestrator
-            user_id: User identifier
-            product_id: Product identifier
+            user_id: User identifier (pre-validated)
+            product_id: Product identifier (pre-validated)
             payment_id: Payment transaction identifier
-            amount: Purchase amount
+            amount: Total purchase amount (pre-calculated)
             quantity: Quantity of items (default: 1)
             status: Initial status (default: PENDING)
 
-            Returns:
+        Returns:
             Created Purchase instance
         """
         kwargs = {
