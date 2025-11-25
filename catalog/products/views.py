@@ -1,7 +1,7 @@
 """
 Catalog microservice views.
-Simplified implementation following KISS principle.
-Only provides the random product endpoint required by Saga orchestrator.
+Simplified implementation following KISS and SOLID principles.
+Uses dependency injection for better testability and maintainability.
 """
 
 import logging
@@ -13,6 +13,7 @@ from rest_framework import status
 from django.db import DatabaseError
 from .models import Product
 from .serializers import ProductRandomSerializer
+from .services import ProductService, IProductService
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,18 @@ class RandomProductView(APIView):
     No compensation required for this service.
 
     Simulates latency for realistic distributed system behavior.
+    Uses dependency injection for ProductService.
     """
+    
+    def __init__(self, service: IProductService = None, **kwargs):
+        """
+        Initialize view with injected service.
+        
+        Args:
+            service: ProductService instance (defaults to ProductService())
+        """
+        super().__init__(**kwargs)
+        self.service = service or ProductService()
 
     def get(self, request):
         """
@@ -42,12 +54,10 @@ class RandomProductView(APIView):
             time.sleep(latency)
             logger.debug(f"Simulated latency: {latency:.3f}s")
 
-            # Get all active products with stock
-            products = Product.objects.filter(is_active=True, stock__gt=0)
-            product_count = products.count()
-            logger.info(f"Found {product_count} active products with stock")
+            # Get random product from service
+            product = self.service.get_random_product()
 
-            if not products.exists():
+            if not product:
                 # If no products, create a random one
                 logger.warning("No products found, creating random product")
                 product = Product.objects.create(
@@ -61,10 +71,6 @@ class RandomProductView(APIView):
                     is_active=True,
                 )
                 logger.info(f"Created new product: {product.id} - {product.name}")
-            else:
-                # Select random product from existing ones
-                product = random.choice(list(products))
-                logger.info(f"Selected product: {product.id} - {product.name}")
 
             elapsed_time = time.time() - start_time
             logger.info(f"Random product request completed in {elapsed_time:.3f}s")

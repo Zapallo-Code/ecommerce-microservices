@@ -3,11 +3,12 @@ Tests for product views and endpoints.
 """
 
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.db import DatabaseError
 from products.models import Product
+from products.services import ProductService
 
 
 class RandomProductViewTests(TestCase):
@@ -95,11 +96,13 @@ class RandomProductViewTests(TestCase):
         
         self.assertIsInstance(data["price"], str)
 
-    @patch('products.models.Product.objects.filter')
-    def test_random_product_database_error(self, mock_filter):
+    @patch('products.views.ProductService')
+    def test_random_product_database_error(self, mock_service_class):
         """Test handling of database errors."""
-        # Mock database error
-        mock_filter.side_effect = DatabaseError("Database connection failed")
+        # Mock service to raise DatabaseError
+        mock_service = Mock(spec=ProductService)
+        mock_service.get_random_product.side_effect = DatabaseError("Database connection failed")
+        mock_service_class.return_value = mock_service
         
         response = self.client.get(self.random_product_url)
         
@@ -108,11 +111,13 @@ class RandomProductViewTests(TestCase):
         self.assertIn("error", data)
         self.assertEqual(data["error"], "Database error occurred")
 
-    @patch('products.views.Product.objects.filter')
-    def test_random_product_unexpected_error(self, mock_filter):
+    @patch('products.views.ProductService')
+    def test_random_product_unexpected_error(self, mock_service_class):
         """Test handling of unexpected errors."""
-        # Mock unexpected error
-        mock_filter.side_effect = Exception("Unexpected error")
+        # Mock service to raise unexpected error
+        mock_service = Mock(spec=ProductService)
+        mock_service.get_random_product.side_effect = Exception("Unexpected error")
+        mock_service_class.return_value = mock_service
         
         response = self.client.get(self.random_product_url)
         
