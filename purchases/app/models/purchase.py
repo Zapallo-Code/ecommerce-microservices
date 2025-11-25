@@ -9,7 +9,6 @@ from __future__ import annotations
 from enum import StrEnum
 
 from django.db import models
-from django.utils import timezone
 
 
 class PurchaseStatus(StrEnum):
@@ -57,7 +56,6 @@ class Purchase(models.Model):
     transaction_id = models.CharField(
         max_length=100,
         unique=True,
-        db_index=True,
         help_text="Unique transaction ID from orchestrator",
     )
     user_id = models.CharField(
@@ -100,7 +98,6 @@ class Purchase(models.Model):
         db_table = "purchases"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["transaction_id"]),
             models.Index(fields=["user_id", "-created_at"]),
             models.Index(fields=["status", "-created_at"]),
         ]
@@ -110,13 +107,6 @@ class Purchase(models.Model):
         return (
             f"Purchase {self.transaction_id} - "
             f"User {self.user_id} - {self.status}"
-        )
-
-    def __repr__(self) -> str:
-        """Developer-friendly representation."""
-        return (
-            f"<Purchase(transaction_id={self.transaction_id!r}, "
-            f"status={self.status!r})>"
         )
 
     # Status transition methods (DRY pattern)
@@ -136,9 +126,8 @@ class Purchase(models.Model):
         self.status = new_status
         if error_message:
             self.error_message = error_message
-        self.updated_at = timezone.now()
         
-        fields_to_update = ["status", "updated_at"]
+        fields_to_update = ["status"]
         if error_message:
             fields_to_update.append("error_message")
         
