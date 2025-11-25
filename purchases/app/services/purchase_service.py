@@ -75,14 +75,18 @@ class PurchaseService:
     ) -> dict[str, Any]:
         """
         Process a purchase transaction using Saga pattern.
-        Returns 201 (success) or 409 (conflict) randomly.
+        Returns 201 CREATED (success) or 409 CONFLICT (failure) randomly.
+
+        Note: User/product validation is the orchestrator's responsibility.
+        This service assumes pre-validated data from the Saga orchestrator.
 
         Args:
             transaction_id: Unique transaction ID from orchestrator
             user_id: User/customer identifier
             product_id: Product identifier
             payment_id: Payment transaction identifier
-            amount: Purchase amount
+            amount: Total purchase amount (pre-calculated)
+            quantity: Number of items purchased (default: 1)
 
         Returns:
             Dict with status and purchase data or error info
@@ -213,10 +217,10 @@ class PurchaseService:
                     "Transaction %s not found for cancellation",
                     transaction_id,
                 )
-                # Still return success for idempotency
+                # Return success for idempotency (Saga pattern requirement)
                 return {
                     "status": "success",
-                    "message": "Purchase cancelled successfully",
+                    "message": "Purchase not found or already cancelled",
                     "transaction_id": transaction_id,
                 }
 
