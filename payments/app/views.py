@@ -66,7 +66,7 @@ def process_payment(request):
     time.sleep(random.uniform(0.5, 2.0))
 
     # Decisión aleatoria: éxito o fallo (50/50)
-    is_success = random.choice([True, False])
+    is_success = random.random() < 0.95
     status_value = Payment.Status.SUCCESS if is_success else Payment.Status.ERROR
     message = "Payment processed successfully" if is_success else "Error processing payment"
     http_status = status.HTTP_200_OK if is_success else status.HTTP_409_CONFLICT

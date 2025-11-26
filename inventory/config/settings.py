@@ -96,7 +96,7 @@ REST_FRAMEWORK = {
 }
 
 # Inventory service settings
-NO_STOCK_RATE = float(os.getenv("NO_STOCK_RATE", "0.1"))
+NO_STOCK_RATE = float(os.getenv("NO_STOCK_RATE", "0.95"))
 SIMULATE_LATENCY = os.getenv("SIMULATE_LATENCY", "True") == "True"
 MIN_LATENCY_MS = float(os.getenv("MIN_LATENCY_MS", "100"))
 MAX_LATENCY_MS = float(os.getenv("MAX_LATENCY_MS", "800"))

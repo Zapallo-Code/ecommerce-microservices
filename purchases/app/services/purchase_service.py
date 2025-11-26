@@ -26,7 +26,7 @@ class PurchaseService:
     """
 
     # Saga simulation configuration
-    SUCCESS_RATE = 0.5  # 50% success rate
+    SUCCESS_RATE = 0.95  # 50% success rate
     MIN_LATENCY_MS = 50  # Minimum latency in milliseconds
     MAX_LATENCY_MS = 200  # Maximum latency in milliseconds
 
