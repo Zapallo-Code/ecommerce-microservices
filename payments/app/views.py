@@ -83,7 +83,7 @@ def process_payment(request):
             "processed_at": datetime.now().isoformat(),
             "request_data": request.data,
             "result": result_meta,
-        },)
+        })
     response_data = {
         "payment_id": payment.id,
         "status": "success" if is_success else "error",
