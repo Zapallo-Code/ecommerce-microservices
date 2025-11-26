@@ -3,6 +3,8 @@ Repository layer for Purchase entity (simplified Saga pattern).
 Provides data access abstraction following the Repository pattern.
 """
 
+from decimal import Decimal
+
 from django.db.models import QuerySet
 
 from app.models import Purchase
@@ -59,31 +61,36 @@ class PurchaseRepository:
         user_id: str,
         product_id: str,
         payment_id: str,
-        amount: float,
+        amount: Decimal,
         quantity: int = 1,
         status: str | None = None,
     ) -> Purchase:
         """
-        Create a new purchase.
+        Create a new purchase record.
+
+        Note: No validation of user_id/product_id performed here.
+        The Saga orchestrator validates these before calling this service.
 
         Args:
             transaction_id: Unique transaction ID from orchestrator
-            user_id: User identifier
-            product_id: Product identifier
+            user_id: User identifier (pre-validated)
+            product_id: Product identifier (pre-validated)
             payment_id: Payment transaction identifier
-            amount: Purchase amount
+            amount: Total purchase amount (pre-calculated)
             quantity: Quantity of items (default: 1)
             status: Initial status (default: PENDING)
 
         Returns:
             Created Purchase instance
         """
-        return Purchase.objects.create(
-            transaction_id=transaction_id,
-            user_id=user_id,
-            product_id=product_id,
-            payment_id=payment_id,
-            amount=amount,
-            quantity=quantity,
-            status=status if status else Purchase.STATUS_PENDING,
-        )
+        kwargs = {
+            "transaction_id": transaction_id,
+            "user_id": user_id,
+            "product_id": product_id,
+            "payment_id": payment_id,
+            "amount": amount,
+            "quantity": quantity,
+        }
+        if status is not None:
+            kwargs["status"] = status
+        return Purchase.objects.create(**kwargs)

@@ -28,7 +28,6 @@ class PaymentRequestSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ID del producto asociado al pago"
     )
-    
     # Campos opcionales para flexibilidad
     transaction_id = serializers.CharField(
         max_length=255,
@@ -36,19 +35,11 @@ class PaymentRequestSerializer(serializers.Serializer):
         allow_blank=True,
         help_text="ID único de la transacción. Se genera automáticamente si no se provee."
     )
-    order_id = serializers.CharField(
-        max_length=100,
-        required=False,
-        allow_blank=True,
-        help_text="ID de la orden asociada al pago"
-    )
     metadata = serializers.JSONField(
         required=False,
         default=dict,
         help_text="Información adicional del pago"
     )
-
-
 class PaymentResponseSerializer(serializers.Serializer):
     """
     Serializer para las respuestas de los endpoints de pago.
@@ -97,7 +88,6 @@ class PaymentSerializer(serializers.ModelSerializer):
             'transaction_id',
             'user_id',
             'product_id',
-            'order_id',
             'amount',
             'status',
             'status_display',

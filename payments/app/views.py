@@ -67,62 +67,33 @@ def process_payment(request):
 
     # Decisión aleatoria: éxito o fallo (50/50)
     is_success = random.choice([True, False])
+    status_value = Payment.Status.SUCCESS if is_success else Payment.Status.ERROR
+    message = "Payment processed successfully" if is_success else "Error processing payment"
+    http_status = status.HTTP_200_OK if is_success else status.HTTP_409_CONFLICT
+    result_meta = 'success' if is_success else 'error'
 
-    if is_success:
-        # Registrar pago exitoso
-        payment = Payment.objects.create(
-            transaction_id=transaction_id,
-            user_id=user_id,
-            product_id=product_id,
-            order_id=order_id,
-            amount=amount,
-            status=Payment.Status.SUCCESS,
-            message="Payment processed successfully",
-            metadata={
-                "processed_at": datetime.now().isoformat(),
-                "request_data": request.data,
-            },
-        )
-
-        response_data = {
-            "payment_id": payment.id,  # ← CRÍTICO: orchestrator espera payment_id
-            "status": "success",
-            "message": "Payment processed successfully",
-            "transaction_id": transaction_id,
-            "user_id": user_id,
-            "product_id": product_id,
-            "amount": str(amount),
-        }
-
-        return Response(response_data, status=status.HTTP_200_OK)
-    else:
-        # Registrar fallo del pago
-        payment = Payment.objects.create(
-            transaction_id=transaction_id,
-            user_id=user_id,
-            product_id=product_id,
-            order_id=order_id,
-            amount=amount,
-            status=Payment.Status.ERROR,
-            message="Error processing payment",
-            metadata={
-                "failed_at": datetime.now().isoformat(),
-                "request_data": request.data,
-                "error_type": "random_failure",
-            },
-        )
-
-        response_data = {
-            "payment_id": payment.id,  # ← Retornar payment_id incluso en error
-            "status": "error",
-            "message": "Error processing payment",
-            "transaction_id": transaction_id,
-            "user_id": user_id,
-            "product_id": product_id,
-        }
-
-        return Response(response_data, status=status.HTTP_409_CONFLICT)
-
+    payment = Payment.objects.create(
+        transaction_id=transaction_id,
+        user_id=user_id,   
+        product_id=product_id,
+        amount=amount,
+        status=status_value,
+        message=message,
+        metadata={
+            "processed_at": datetime.now().isoformat(),
+            "request_data": request.data,
+            "result": result_meta,
+        })
+    response_data = {
+        "payment_id": payment.id,
+        "status": "success" if is_success else "error",
+        "message": message,
+        "transaction_id": transaction_id,
+        "user_id": user_id,
+        "amount": str(amount),
+        "product_id": product_id,
+    }
+    return Response(response_data, status=http_status)
 
 @api_view(["POST"])
 def refund_payment(request, payment_id):

@@ -1,100 +1,208 @@
 """
 Business logic for inventory operations.
-Handles decrease operation with random failures (50% like payments and purchases).
-Per requirements, inventory does NOT need compensation/restore.
+Handles decrease and compensate operations with idempotency and atomicity.
 """
-
 import random
 import time
 import logging
-import uuid
-from .models import Inventory
+from django.db import transaction
+from django.conf import settings
+from .models import Inventory, InventoryOperation
 
 logger = logging.getLogger(__name__)
+
+
+class InsufficientStockError(Exception):
+    """Raised when there's not enough stock for an operation."""
+    pass
 
 
 class InventoryService:
     """Service for managing inventory operations in a saga pattern."""
 
     @staticmethod
-    def _is_testing():
-        """Check if running in test environment."""
-        import sys
-
-        return "test" in sys.argv
+    def _simulate_latency():
+        """Simulate network/processing latency if enabled."""
+        if settings.SIMULATE_LATENCY:
+            latency = random.uniform(
+                settings.MIN_LATENCY_MS / 1000,
+                settings.MAX_LATENCY_MS / 1000
+            )
+            time.sleep(latency)
 
     @staticmethod
-    def decrease_inventory(
-        product_id: str, quantity: int = 1, transaction_id: str = None
-    ):
-        """
-        Decreases product inventory.
-        Returns 200 OK or 409 Conflict randomly (50% each) in production.
-        Always succeeds in test environment.
+    def _should_simulate_no_stock():
+        """Randomly decide if we should simulate no stock."""
+        return random.random() < settings.NO_STOCK_RATE
 
-        Args:
-            product_id: Product ID (string)
-            quantity: Quantity to decrease
-            transaction_id: Saga transaction ID (optional)
-
-        Returns:
-            dict with operation result
-
-        Raises:
-            ValueError: If random failure occurs (50% chance in production)
-        """
-        # Simulate latency (skip in tests)
-        if not InventoryService._is_testing():
-            latency = random.uniform(0.1, 0.5)
-            time.sleep(latency)
-        else:
-            latency = 0.0
-
-        # Simulate random error at 50% (skip in tests)
-        if not InventoryService._is_testing() and random.random() < 0.5:
-            logger.warning(f"Random failure (50%) - product_id: {product_id}")
-            raise ValueError(
-                f"Insufficient stock for product {product_id} (random failure)"
-            )
-
-        # Generate internal operation_id
-        operation_id = str(uuid.uuid4())
-
-        # Find or create inventory
-        inventory, created = Inventory.objects.get_or_create(
-            product_id=product_id, defaults={"stock": 100}
+    @staticmethod
+    def _record_failure(operation_id, product_id, quantity, metadata=None):
+        """Helper to record a failed operation."""
+        InventoryOperation.objects.create(
+            operation_id=operation_id,
+            product_id=product_id,
+            quantity=-quantity,
+            status='failed',
+            metadata=metadata or {}
         )
 
-        if created:
-            logger.info(
-                f"Created new inventory entry - product_id: {product_id}, initial stock: 100"
-            )
-
-        # Verify actual stock (second validation)
+    @staticmethod
+    @transaction.atomic
+    def decrease_stock(operation_id, product_id, quantity, metadata=None):
+        """
+        Decrease stock for a product with idempotency support.
+        
+        Args:
+            operation_id: UUID for idempotency
+            product_id: ID of the product
+            quantity: Amount to decrease
+            metadata: Optional metadata dict
+            
+        Returns:
+            dict with status and remaining stock
+            
+        Raises:
+            InsufficientStockError: When stock is insufficient
+        """
+        logger.info(f"Decrease stock request: operation_id={operation_id}, product_id={product_id}, quantity={quantity}")
+        
+        # Simulate latency
+        InventoryService._simulate_latency()
+        
+        # Check if operation already exists (idempotency)
+        existing_op = InventoryOperation.objects.filter(
+            operation_id=operation_id
+        ).first()
+        
+        if existing_op:
+            if existing_op.status == 'applied':
+                logger.info(f"Operation {operation_id} already applied (idempotent)")
+                inventory = Inventory.objects.get(product_id=product_id)
+                return {
+                    'status': 'updated',
+                    'product_id': product_id,
+                    'remaining': inventory.stock,
+                    'idempotent': True
+                }
+            elif existing_op.status == 'failed':
+                logger.info(f"Operation {operation_id} previously failed")
+                raise InsufficientStockError(f"Operation {operation_id} previously failed")
+        
+        # Simulate random no stock scenario
+        if InventoryService._should_simulate_no_stock():
+            logger.warning(f"Simulating no stock for product_id={product_id}")
+            InventoryService._record_failure(operation_id, product_id, quantity, metadata)
+            raise InsufficientStockError(f"Simulated: No stock for product {product_id}")
+        
+        # Get inventory with lock
+        try:
+            inventory = Inventory.objects.select_for_update().get(product_id=product_id)
+        except Inventory.DoesNotExist:
+            logger.error(f"Product {product_id} not found in inventory")
+            InventoryService._record_failure(operation_id, product_id, quantity, metadata)
+            raise InsufficientStockError(f"Product {product_id} not found")
+        
+        # Check if there's enough stock
         if inventory.stock < quantity:
-            logger.warning(
-                f"Insufficient stock - product_id: {product_id}, available: {inventory.stock}, requested: {quantity}"
-            )
-            raise ValueError(
-                f"Insufficient stock for product {product_id}. Available: {inventory.stock}, Requested: {quantity}"
-            )
-
+            logger.warning(f"Insufficient stock: product_id={product_id}, available={inventory.stock}, requested={quantity}")
+            InventoryService._record_failure(operation_id, product_id, quantity, metadata)
+            raise InsufficientStockError(f"Insufficient stock for product {product_id}")
+        
         # Decrease stock
-        old_stock = inventory.stock
         inventory.stock -= quantity
         inventory.save()
-
-        logger.info(
-            f"Stock decreased - product_id: {product_id}, old: {old_stock}, new: {inventory.stock}, operation_id: {operation_id}"
+        
+        # Record operation
+        InventoryOperation.objects.create(
+            operation_id=operation_id,
+            product_id=product_id,
+            quantity=-quantity,
+            status='applied',
+            metadata=metadata or {}
         )
-
+        
+        logger.info(f"Stock decreased successfully: product_id={product_id}, new_stock={inventory.stock}")
+        
         return {
-            "message": "Inventory decreased successfully",
-            "product_id": product_id,
-            "quantity": quantity,
-            "previous_stock": old_stock,
-            "current_stock": inventory.stock,
-            "operation_id": operation_id,
-            "transaction_id": transaction_id,
-            "latency_seconds": round(latency, 3),
+            'status': 'updated',
+            'product_id': product_id,
+            'remaining': inventory.stock
         }
+
+    @staticmethod
+    @transaction.atomic
+    def compensate(operation_id, product_id, quantity, metadata=None):
+        """
+        Compensate (restore) stock with idempotency support.
+        Always returns success (200).
+        
+        Args:
+            operation_id: UUID for the compensation operation
+            product_id: ID of the product
+            quantity: Amount to restore
+            metadata: Optional metadata dict
+            
+        Returns:
+            dict with status and new stock
+        """
+        logger.info(f"Compensate request: operation_id={operation_id}, product_id={product_id}, quantity={quantity}")
+        
+        # Simulate latency
+        InventoryService._simulate_latency()
+        
+        # Check if compensation already applied (idempotency)
+        existing_comp = InventoryOperation.objects.filter(
+            operation_id=operation_id,
+            status='reverted'
+        ).first()
+        
+        if existing_comp:
+            logger.info(f"Compensation {operation_id} already applied (idempotent)")
+            inventory = Inventory.objects.get(product_id=product_id)
+            return {
+                'status': 'compensated',
+                'product_id': product_id,
+                'new_stock': inventory.stock,
+                'idempotent': True
+            }
+        
+        # Get or create inventory
+        inventory, created = Inventory.objects.select_for_update().get_or_create(
+            product_id=product_id,
+            defaults={'stock': 0}
+        )
+        
+        # Restore stock
+        inventory.stock += quantity
+        inventory.save()
+        
+        # Record compensation
+        InventoryOperation.objects.create(
+            operation_id=operation_id,
+            product_id=product_id,
+            quantity=quantity,
+            status='reverted',
+            metadata=metadata or {}
+        )
+        
+        logger.info(f"Stock compensated successfully: product_id={product_id}, new_stock={inventory.stock}")
+        
+        return {
+            'status': 'compensated',
+            'product_id': product_id,
+            'new_stock': inventory.stock
+        }
+
+    @staticmethod
+    def get_inventory(product_id):
+        """Get inventory for a product."""
+        try:
+            inventory = Inventory.objects.get(product_id=product_id)
+            return {
+                'product_id': inventory.product_id,
+                'stock': inventory.stock,
+                'reserved': inventory.reserved,
+                'available': inventory.available
+            }
+        except Inventory.DoesNotExist:
+            return None

@@ -48,7 +48,6 @@ class Purchase(models.Model):
     STATUS_SUCCESS = PurchaseStatus.SUCCESS
     STATUS_CANCELLED = PurchaseStatus.CANCELLED
     STATUS_FAILED = PurchaseStatus.FAILED
-    STATUS_CHOICES = PurchaseStatus.choices()
 
     # Core fields required by Saga orchestrator
     transaction_id = models.CharField(

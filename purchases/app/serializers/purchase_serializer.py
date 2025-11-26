@@ -45,7 +45,7 @@ class PurchaseSuccessResponseSerializer(serializers.Serializer):
     """
 
     status = serializers.CharField()
-    purchase_id = serializers.IntegerField(source="id")
+    purchase_id = serializers.IntegerField()
     transaction_id = serializers.CharField()
 
 
@@ -57,13 +57,15 @@ class PurchaseErrorResponseSerializer(serializers.Serializer):
     {
         "status": "error",
         "message": "Purchase failed",
-        "error": "CONFLICT"
+        "error": "CONFLICT",
+        "current_status": "failed"  # Optional, only for duplicates
     }
     """
 
     status = serializers.CharField()
     message = serializers.CharField()
     error = serializers.CharField()
+    current_status = serializers.CharField(required=False)
 
 
 class CancelResponseSerializer(serializers.Serializer):

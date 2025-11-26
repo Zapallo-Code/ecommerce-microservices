@@ -27,24 +27,31 @@ class SagaService:
             created_at=datetime.now(),
         )
 
+    async def _execute_step(
+        self,
+        transaction: TransactionDetail,
+        step_name: str,
+        step_fn,
+    ) -> None:
+        """Execute a saga step with logging and state persistence."""
+        logger.info(f"[{transaction.transaction_id}] {step_name}")
+        await step_fn(transaction)
+        transaction_store.save(transaction)
+        logger.info(f"[{transaction.transaction_id}] {step_name} completed")
+
     async def _step_get_product(self, transaction: TransactionDetail) -> None:
-        logger.info(
-            f"[{transaction.transaction_id}] Step 1: Getting product from catalog"
-        )
+        """Get product from catalog."""
         product_response = await self.client.call_service(
             "catalog", "/products/random/", method="GET"
         )
         transaction.product_id = (
-            str(product_response.get("product_id"))
+            str(product_response["product_id"])
             if product_response.get("product_id")
             else None
         )
-        logger.info(
-            f"[{transaction.transaction_id}] Product obtained: {transaction.product_id}"
-        )
 
     async def _step_process_payment(self, transaction: TransactionDetail) -> None:
-        logger.info(f"[{transaction.transaction_id}] Step 2: Processing payment")
+        """Process payment for the transaction."""
         payment_data: dict[str, object] = {
             "user_id": transaction.user_id,
             "amount": transaction.amount,
@@ -54,16 +61,13 @@ class SagaService:
             "payments", "/payments/", method="POST", data=payment_data
         )
         transaction.payment_id = (
-            str(payment_response.get("payment_id"))
+            str(payment_response["payment_id"])
             if payment_response.get("payment_id")
             else None
         )
-        logger.info(
-            f"[{transaction.transaction_id}] Payment processed: {transaction.payment_id}"
-        )
 
     async def _step_update_inventory(self, transaction: TransactionDetail) -> None:
-        logger.info(f"[{transaction.transaction_id}] Step 3: Updating inventory")
+        """Update inventory for the product."""
         inventory_data: dict[str, object] = {
             "product_id": transaction.product_id,
             "quantity": 1,
@@ -75,10 +79,9 @@ class SagaService:
             data=inventory_data,
         )
         transaction.inventory_updated = True
-        logger.info(f"[{transaction.transaction_id}] Inventory updated")
 
     async def _step_register_purchase(self, transaction: TransactionDetail) -> None:
-        logger.info(f"[{transaction.transaction_id}] Step 4: Registering purchase")
+        """Register the purchase."""
         purchase_data: dict[str, object] = {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
@@ -93,29 +96,31 @@ class SagaService:
             data=purchase_data,
         )
         transaction.purchase_registered = True
-        logger.info(f"[{transaction.transaction_id}] Purchase registered successfully")
 
     async def execute_saga(
         self, purchase_request: TransactionRequest
     ) -> TransactionDetail:
+        """Execute the complete saga orchestration."""
         transaction_id = str(uuid.uuid4())
         transaction = self._create_transaction(purchase_request, transaction_id)
-
         transaction_store.save(transaction)
 
         try:
-            await self._step_get_product(transaction)
-            transaction_store.save(transaction)
+            # Execute saga steps
+            await self._execute_step(
+                transaction, "Step 1: Get product", self._step_get_product
+            )
+            await self._execute_step(
+                transaction, "Step 2: Process payment", self._step_process_payment
+            )
+            await self._execute_step(
+                transaction, "Step 3: Update inventory", self._step_update_inventory
+            )
+            await self._execute_step(
+                transaction, "Step 4: Register purchase", self._step_register_purchase
+            )
 
-            await self._step_process_payment(transaction)
-            transaction_store.save(transaction)
-
-            await self._step_update_inventory(transaction)
-            transaction_store.save(transaction)
-
-            await self._step_register_purchase(transaction)
-            transaction_store.save(transaction)
-
+            # Mark as completed
             transaction.status = TransactionStatus.COMPLETED
             transaction.completed_at = datetime.now()
             transaction_store.save(transaction)
@@ -124,7 +129,7 @@ class SagaService:
             return transaction
 
         except Exception as e:
-            logger.error(f"[{transaction_id}] Error in saga: {str(e)}")
+            logger.error(f"[{transaction_id}] Saga failed: {str(e)}")
 
             transaction.error_message = str(e)
             transaction_store.save(transaction)
@@ -135,5 +140,5 @@ class SagaService:
             transaction.completed_at = datetime.now()
             transaction_store.save(transaction)
 
-            logger.warning(f"[{transaction_id}] Saga compensated due to error")
+            logger.warning(f"[{transaction_id}] Saga compensated")
             raise

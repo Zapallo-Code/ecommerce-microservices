@@ -7,6 +7,6 @@ from django.views import View
 class HealthCheckView(View):
     """Simple health check endpoint."""
 
-    def get(self, request):
+    def get(self, _request) -> JsonResponse:
         """Return a simple health check response."""
         return JsonResponse({"status": "healthy", "service": "purchases"})
