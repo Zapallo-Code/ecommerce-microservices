@@ -51,6 +51,12 @@ services:
       ALLOWED_HOSTS: "*"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     # Ports removed - traffic handled by Traefik
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:8001/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,6 +119,12 @@ services:
       ALLOWED_HOSTS: "*"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     # Ports removed - traffic handled by Traefik
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:8002/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,6 +188,12 @@ services:
       ALLOWED_HOSTS: ${INVENTORY_ALLOWED_HOSTS:-*}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     # Ports removed - traffic handled by Traefik
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:8003/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -238,6 +256,12 @@ services:
       ALLOWED_HOSTS: "*"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     # Ports removed - traffic handled by Traefik
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:8004/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -297,6 +321,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WORKERS: "1"
     # Ports removed - traffic handled by Traefik
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     command:
       - sh
       - -c
@@ -326,7 +356,7 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
       # HTTP Router
-      - "traefik.http.routers.orchestrator.rule=Host(`orchestrator.localhost`) || Host(`api.localhost`)"
+      - "traefik.http.routers.orchestrator.rule=Host(`orchestrator.localhost`) || PathPrefix(`/saga`)"
       - "traefik.http.routers.orchestrator.entrypoints=web"
       - "traefik.http.routers.orchestrator.service=orchestrator"
       # Service
