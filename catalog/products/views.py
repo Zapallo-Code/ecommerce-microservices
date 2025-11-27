@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class RandomProductView(APIView):
     """
-    GET /products/random/
+    GET /catalog/
 
     Returns a random product with random data.
     Always returns status 200.

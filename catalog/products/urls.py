@@ -9,7 +9,7 @@ from .health_views import CatalogHealthCheckView
 
 urlpatterns = [
     # Random product endpoint (required by orchestrator)
-    path("products/random/", RandomProductView.as_view(), name="random-product"),
+    path("catalog/", RandomProductView.as_view(), name="random-product"),
     # Basic health check
     path("health/", CatalogHealthCheckView.as_view(), name="catalog-health"),
 ]
