@@ -26,6 +26,7 @@ services:
     environment:
       SECRET_KEY: ${CATALOG_SECRET_KEY:-django-insecure-key}
       DEBUG: ${DEBUG:-False}
+      USE_SQLITE: "False"
       POSTGRES_DB: ms_catalog
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -45,6 +46,7 @@ services:
     environment:
       SECRET_KEY: ${PAYMENTS_SECRET_KEY:-django-insecure-key}
       DEBUG: ${DEBUG:-False}
+      USE_SQLITE: "False"
       POSTGRES_DB: ms_payments
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -64,6 +66,7 @@ services:
     environment:
       SECRET_KEY: ${INVENTORY_SECRET_KEY:-django-insecure-key}
       DEBUG: ${DEBUG:-False}
+      USE_SQLITE: "False"
       DJANGO_SETTINGS_MODULE: config.settings
       POSTGRES_DB: ms_inventory
       POSTGRES_USER: postgres
@@ -84,6 +87,7 @@ services:
     environment:
       SECRET_KEY: ${PURCHASES_SECRET_KEY:-django-insecure-key}
       DEBUG: ${DEBUG:-False}
+      USE_SQLITE: "False"
       POSTGRES_DB: ms_purchases
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -106,6 +110,7 @@ services:
       INVENTORY_URL: http://inventory:8003
       PURCHASES_URL: http://purchases:8004
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WORKERS: "1"
     ports:
       - "8000:8000"
     depends_on:
