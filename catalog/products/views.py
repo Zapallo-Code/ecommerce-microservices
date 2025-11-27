@@ -40,6 +40,14 @@ class RandomProductView(APIView):
         super().__init__(**kwargs)
         self.service = service or ProductService()
 
+    def post(self, request):
+        """
+        Handle POST requests for random product.
+        Accepts user_id and amount, returns a random product.
+        """
+        logger.info(f"Random product request received with data: {request.data}")
+        return self.get(request)
+
     def get(self, request):
         """
         Returns a random product.

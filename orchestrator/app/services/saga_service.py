@@ -41,8 +41,9 @@ class SagaService:
 
     async def _step_get_product(self, transaction: TransactionDetail) -> None:
         """Get product from catalog."""
+        data = {"user_id": transaction.user_id, "amount": transaction.amount}
         product_response = await self.client.call_service(
-            "catalog", "/products/random/", method="GET"
+            "catalog", "/products/random/", method="POST", data=data
         )
         transaction.product_id = (
             str(product_response["product_id"])
@@ -71,6 +72,7 @@ class SagaService:
         inventory_data: dict[str, object] = {
             "product_id": transaction.product_id,
             "quantity": 1,
+            "operation_id": str(uuid.uuid4()),
         }
         await self.client.call_service(
             "inventory",

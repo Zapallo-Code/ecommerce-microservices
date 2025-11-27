@@ -1137,7 +1137,7 @@ curl -X POST http://localhost:8003/inventory/decrease/ \
   -d '{
     "product_id": 1,
     "quantity": 2,
-    "transaction_id": "txn-456"
+    "operation_id": "550e8400-e29b-41d4-a716-446655440000"
   }'
 ```
 
