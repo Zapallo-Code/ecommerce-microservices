@@ -1,9 +1,3 @@
-"""
-API Views for Purchase endpoints.
-Implements REST API for purchase operations with Saga pattern.
-Uses APIView instead of ViewSet for cleaner endpoint definitions.
-"""
-
 import logging
 from typing import Any
 
@@ -25,11 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class BasePurchaseView(APIView):
-    """
-    Base view for purchase operations.
-    Provides common functionality following DRY principle.
-    """
-
     permission_classes = [AllowAny]
     service_class = PurchaseService
 
@@ -50,59 +39,13 @@ class BasePurchaseView(APIView):
         data: dict[str, Any],
         status_code: int,
     ) -> Response:
-        """
-        Build and validate response (DRY helper method).
-
-        Args:
-            serializer_class: Serializer class to use
-            data: Data to serialize
-            status_code: HTTP status code
-
-        Returns:
-            Response object with serialized data
-        """
         serializer = serializer_class(data=data)
         serializer.is_valid(raise_exception=False)
         return Response(serializer.data, status=status_code)
 
 
 class PurchaseCreateView(BasePurchaseView):
-    """
-    API endpoint for creating a purchase transaction.
-    POST /purchases
-
-    Implements Saga pattern with random success/failure (50%).
-    Returns 201 CREATED for success or 409 CONFLICT for failure.
-    """
-
     def post(self, request: Request) -> Response:
-        """
-        Create a new purchase transaction.
-
-        Request body:
-        {
-            "transaction_id": "uuid",
-            "user_id": "string",
-            "product_id": "string",
-            "payment_id": "string",
-            "amount": 100.50,
-            "quantity": 1  // optional, defaults to 1
-        }
-
-        Response 201 CREATED:
-        {
-            "status": "success",
-            "purchase_id": "generated-id",
-            "transaction_id": "uuid"
-        }
-
-        Response 409 CONFLICT:
-        {
-            "status": "error",
-            "message": "Purchase failed",
-            "error": "CONFLICT"
-        }
-        """
         # Validate request
         serializer = PurchaseRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -149,28 +92,7 @@ class PurchaseCreateView(BasePurchaseView):
 
 
 class PurchaseCancelView(BasePurchaseView):
-    """
-    API endpoint for cancelling a purchase (compensation).
-    DELETE /purchases/<transaction_id>/cancel
-
-    Part of Saga compensation flow.
-    Always returns 200 OK.
-    """
-
     def delete(self, _request: Request, transaction_id: str) -> Response:
-        """
-        Cancel a purchase transaction (compensation).
-
-        Args:
-            transaction_id: Transaction ID to cancel
-
-        Response 200 OK (always):
-        {
-            "status": "success",
-            "message": "Purchase cancelled successfully",
-            "transaction_id": "uuid"
-        }
-        """
         logger.info("Cancellation requested for: %s", transaction_id)
 
         # Execute cancellation
