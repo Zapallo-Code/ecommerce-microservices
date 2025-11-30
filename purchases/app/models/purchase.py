@@ -1,9 +1,3 @@
-"""
-Purchase domain models for the microservice.
-Implements the Purchase entity for Saga pattern orchestration.
-Simplified model according to KISS and SOLID principles.
-"""
-
 from enum import StrEnum
 
 from django.db import models
@@ -18,31 +12,11 @@ class PurchaseStatus(StrEnum):
     FAILED = "failed"
 
     @classmethod
-    def choices(cls) -> list[tuple[str, str]]:
-        """Generate Django choices from enum."""
+    def choices(cls) -> list[tuple[str, str]]:  # noqa: D102
         return [(status.value, status.name.title()) for status in cls]
 
 
-class Purchase(models.Model):
-    """
-    Purchase entity for Saga pattern orchestration.
-
-    Represents a single purchase transaction in the distributed system.
-    Uses simplified model with single item per purchase for KISS principle.
-
-    Attributes:
-        transaction_id: Unique identifier from orchestrator
-        user_id: Customer/user identifier
-        product_id: Product being purchased
-        quantity: Number of items purchased
-        payment_id: Payment transaction reference
-        amount: Total purchase amount
-        status: Current status in Saga flow
-        error_message: Error details if transaction failed
-        created_at: Transaction creation timestamp
-        updated_at: Last modification timestamp
-    """
-
+class Purchase(models.Model):  # noqa: D101
     # Backwards compatibility: Status constants as class attributes
     STATUS_PENDING = PurchaseStatus.PENDING
     STATUS_SUCCESS = PurchaseStatus.SUCCESS
@@ -89,9 +63,7 @@ class Purchase(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        """Model metadata configuration."""
-
+    class Meta:  # noqa: D106
         db_table = "purchases"
         ordering = ["-created_at"]
         indexes = [
@@ -99,8 +71,7 @@ class Purchase(models.Model):
             models.Index(fields=["status", "-created_at"]),
         ]
 
-    def __str__(self) -> str:
-        """String representation of the purchase."""
+    def __str__(self) -> str:  # noqa: D105
         return (
             f"Purchase {self.transaction_id} - "
             f"User {self.user_id} - {self.status}"
@@ -113,58 +84,39 @@ class Purchase(models.Model):
         new_status: PurchaseStatus,
         error_message: str | None = None,
     ) -> None:
-        """
-        Internal method to update purchase status (DRY principle).
-
-        Args:
-            new_status: The new status to set
-            error_message: Optional error message for failed transactions
-        """
         self.status = new_status
         if error_message:
             self.error_message = error_message
-        
+
         fields_to_update = ["status"]
         if error_message:
             fields_to_update.append("error_message")
-        
+
         self.save(update_fields=fields_to_update)
 
-    def mark_success(self) -> None:
-        """Mark the purchase as successful (Saga success path)."""
+    def mark_success(self) -> None:  # noqa: D102
         self._update_status(PurchaseStatus.SUCCESS)
 
     def mark_failed(self, error_message: str | None = None) -> None:
-        """
-        Mark the purchase as failed (Saga failure path).
-
-        Args:
-            error_message: Optional description of the failure reason
-        """
         self._update_status(PurchaseStatus.FAILED, error_message)
 
-    def cancel(self) -> None:
-        """Cancel the purchase (Saga compensation)."""
+    def cancel(self) -> None:  # noqa: D102
         self._update_status(PurchaseStatus.CANCELLED)
 
     # Status checkers as properties (more Pythonic)
 
     @property
-    def is_pending(self) -> bool:
-        """Check if purchase is in pending status."""
+    def is_pending(self) -> bool:  # noqa: D102
         return self.status == PurchaseStatus.PENDING
 
     @property
-    def is_success(self) -> bool:
-        """Check if purchase is successful."""
+    def is_success(self) -> bool:  # noqa: D102
         return self.status == PurchaseStatus.SUCCESS
 
     @property
-    def is_cancelled(self) -> bool:
-        """Check if purchase is cancelled."""
+    def is_cancelled(self) -> bool:  # noqa: D102
         return self.status == PurchaseStatus.CANCELLED
 
     @property
-    def is_failed(self) -> bool:
-        """Check if purchase is failed."""
+    def is_failed(self) -> bool:  # noqa: D102
         return self.status == PurchaseStatus.FAILED
