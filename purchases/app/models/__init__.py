@@ -1,3 +1,3 @@
 from .purchase import Purchase
 
-__all__ = ['Purchase']
+__all__ = ["Purchase"]
