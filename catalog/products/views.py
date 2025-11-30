@@ -1,9 +1,3 @@
-"""
-Catalog microservice views.
-Simplified implementation following KISS and SOLID principles.
-Uses dependency injection for better testability and maintainability.
-"""
-
 import logging
 import random
 import time
@@ -19,40 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 class RandomProductView(APIView):
-    """
-    GET /catalog/
-
-    Returns a random product with random data.
-    Always returns status 200.
-    No compensation required for this service.
-
-    Simulates latency for realistic distributed system behavior.
-    Uses dependency injection for ProductService.
-    """
     
     def __init__(self, service: IProductService = None, **kwargs):
-        """
-        Initialize view with injected service.
-        
-        Args:
-            service: ProductService instance (defaults to ProductService())
-        """
         super().__init__(**kwargs)
         self.service = service or ProductService()
 
     def post(self, request):
-        """
-        Handle POST requests for random product.
-        Accepts user_id and amount, returns a random product.
-        """
         logger.info(f"Random product request received with data: {request.data}")
         return self.get(request)
 
     def get(self, request):
-        """
-        Returns a random product.
-        Always succeeds (status 200).
-        """
         start_time = time.time()
         logger.info("Random product request received")
         

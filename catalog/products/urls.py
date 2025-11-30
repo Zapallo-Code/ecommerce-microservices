@@ -1,7 +1,3 @@
-"""
-URL configuration for catalog microservice.
-Simplified to only expose the required random product endpoint.
-"""
 
 from django.urls import path
 from .views import RandomProductView
