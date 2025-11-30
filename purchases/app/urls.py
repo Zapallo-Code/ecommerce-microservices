@@ -1,11 +1,7 @@
-"""
-URL configuration for the app.
-Defines endpoints for Saga pattern operations.
-"""
-
 from django.urls import path
-from app.views.purchase_view import PurchaseCreateView, PurchaseCancelView
+
 from app.views.health_view import HealthCheckView
+from app.views.purchase_view import PurchaseCancelView, PurchaseCreateView
 
 urlpatterns = [
     # Health check
