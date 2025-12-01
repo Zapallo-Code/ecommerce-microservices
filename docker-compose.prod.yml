@@ -19,14 +19,6 @@ services:
     networks:
       - ecommerce-network
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -76,14 +68,6 @@ services:
       # Health check
       - "traefik.http.services.catalog.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.catalog.loadbalancer.healthcheck.interval=10s"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -145,14 +129,6 @@ services:
       # Health check
       - "traefik.http.services.payments.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.payments.loadbalancer.healthcheck.interval=10s"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -215,14 +191,6 @@ services:
       # Health check
       - "traefik.http.services.inventory.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.inventory.loadbalancer.healthcheck.interval=10s"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -284,14 +252,6 @@ services:
       # Health check
       - "traefik.http.services.purchases.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.purchases.loadbalancer.healthcheck.interval=10s"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -367,14 +327,6 @@ services:
       # Health check
       - "traefik.http.services.orchestrator.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.orchestrator.loadbalancer.healthcheck.interval=10s"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
     logging:
       driver: "json-file"
       options:
