@@ -35,9 +35,23 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce-network
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        python manage.py seed_products &&
+        python manage.py runserver 0.0.0.0:8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Payments Microservice
   payments:
@@ -55,9 +69,22 @@ services:
     ports:
       - "8002:8002"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/payments/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        python manage.py runserver 0.0.0.0:8002
 
   # Inventory Microservice
   inventory:
@@ -76,9 +103,23 @@ services:
     ports:
       - "8003:8003"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce-network
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        python manage.py seed_inventory &&
+        python manage.py runserver 0.0.0.0:8003
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8003/health/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Purchases Microservice
   purchases:
@@ -96,9 +137,22 @@ services:
     ports:
       - "8004:8004"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate --noinput &&
+        python manage.py runserver 0.0.0.0:8004
 
   # Saga Orchestrator
   orchestrator:
@@ -114,10 +168,14 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - catalog
-      - payments
-      - inventory
-      - purchases
+      catalog:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+      purchases:
+        condition: service_healthy
     networks:
       - ecommerce-network
 
