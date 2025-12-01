@@ -69,10 +69,11 @@ class SagaService:
 
     async def _step_update_inventory(self, transaction: TransactionDetail) -> None:
         """Update inventory for the product."""
+        operation_id = str(uuid.uuid4())
         inventory_data: dict[str, object] = {
             "product_id": transaction.product_id,
             "quantity": 1,
-            "operation_id": str(uuid.uuid4()),
+            "operation_id": operation_id,
         }
         await self.client.call_service(
             "inventory",
@@ -80,6 +81,7 @@ class SagaService:
             method="POST",
             data=inventory_data,
         )
+        transaction.inventory_operation_id = operation_id
         transaction.inventory_updated = True
 
     async def _step_register_purchase(self, transaction: TransactionDetail) -> None:
