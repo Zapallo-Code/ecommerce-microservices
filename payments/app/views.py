@@ -13,8 +13,9 @@ from .serializers import PaymentRequestSerializer, RefundRequestSerializer
 
 @api_view(["GET"])
 def health_check(request):
+    
     return Response(
-        {"status": "healthy", "service": "payments", "version": "1.0.0"},
+        {"status": "healthy", "service": "payments"},
         status=status.HTTP_200_OK,
     )
 
