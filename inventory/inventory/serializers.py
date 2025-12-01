@@ -16,12 +16,6 @@ class DecreaseInventorySerializer(BaseInventoryOperationSerializer):
     pass
 
 
-class CompensateInventorySerializer(BaseInventoryOperationSerializer):
-    """Serializer for compensate inventory request."""
-
-    pass
-
-
 class InventorySerializer(serializers.Serializer):
     """Serializer for inventory response."""
 

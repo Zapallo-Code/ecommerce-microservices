@@ -5,7 +5,6 @@ from rest_framework import status
 from .services import InventoryService, InsufficientStockError
 from .serializers import (
     DecreaseInventorySerializer,
-    CompensateInventorySerializer,
     InventorySerializer,
 )
 
@@ -37,7 +36,8 @@ class DecreaseInventoryView(APIView):
             logger.warning(f"Insufficient stock: {str(e)}")
             return Response(
                 {
-                    "status": "no_stock",
+                    "status": "insufficient_stock",
+                    "error": "Sin stock disponible",
                     "product_id": data["product_id"],
                     "message": str(e),
                 },
@@ -48,40 +48,6 @@ class DecreaseInventoryView(APIView):
             return Response(
                 {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-class CompensateInventoryView(APIView):
-    def post(self, request):
-        serializer = CompensateInventorySerializer(data=request.data)
-
-        if not serializer.is_valid():
-            return Response(
-                {"error": "Invalid request", "details": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        data = serializer.validated_data
-
-        try:
-            result = InventoryService.compensate(
-                operation_id=data["operation_id"],
-                product_id=data["product_id"],
-                quantity=data["quantity"],
-                metadata=data.get("metadata"),
-            )
-            return Response(result, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error in compensate: {str(e)}", exc_info=True)
-            # Even on error, compensate should return 200 to avoid saga loop
-            return Response(
-                {
-                    "status": "compensated",
-                    "product_id": data["product_id"],
-                    "error": str(e),
-                },
-                status=status.HTTP_200_OK,
             )
 
 
@@ -100,8 +66,9 @@ class InventoryDetailView(APIView):
 
 
 class HealthCheckView(APIView):
+
     def get(self, request):
         return Response(
-            {"status": "healthy", "service": "inventory", "version": "1.0.0"},
+            {"status": "healthy", "service": "inventory"},
             status=status.HTTP_200_OK,
         )
