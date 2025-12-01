@@ -43,7 +43,7 @@ El sistema está compuesto por **5 microservicios** independientes que se comuni
 │              │    │              │    │              │
 │ • Productos  │    │ • Pagos      │    │ • Stock      │
 │   aleatorios │    │ • Reembolsos │    │ • Decrementos│
-│ • Siempre OK │    │ • 50% fallo  │    │ • 50% fallo  │
+│ • Siempre OK │    │ • 5% fallo   │    │ • 30% fallo  │
 └──────────────┘    └──────────────┘    └──────────────┘
                             │
                             ▼
@@ -54,7 +54,7 @@ El sistema está compuesto por **5 microservicios** independientes que se comuni
                     │              │
                     │ • Compras    │
                     │ • Cancela.   │
-                    │ • 50% fallo  │
+                    │ • 5% fallo   │
                     └──────────────┘
                             │
         ┌───────────────────┴───────────────────┐
@@ -75,9 +75,9 @@ El sistema está compuesto por **5 microservicios** independientes que se comuni
 ```
 1. Cliente → POST /saga/transaction → Orchestrator
 2. Orchestrator → GET /products/random/ → Catalog (siempre éxito)
-3. Orchestrator → POST /payments/ → Payments (50% fallo aleatorio)
-4. Si Payment OK → POST /inventory/decrease/ → Inventory (50% fallo)
-5. Si Inventory OK → POST /purchases/ → Purchases (50% fallo)
+3. Orchestrator → POST /payments/ → Payments (5% fallo aleatorio)
+4. Si Payment OK → POST /inventory/decrease/ → Inventory (30% fallo)
+5. Si Inventory OK → POST /purchases/ → Purchases (5% fallo)
 6. Si todo OK → TRANSACTION COMPLETED ✅
 
 En caso de fallo en cualquier paso:
@@ -230,15 +230,15 @@ class Product(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en creación de pagos
+- **5% de probabilidad de fallo aleatorio** en creación de pagos
 - Retorna 200 (éxito) o 409 (conflicto/error)
 - Implementa endpoint de compensación (refund)
-- Simula latencia de 0.1 a 0.3 segundos
+- Simula latencia de 0.5 a 2 segundos
 
 #### Endpoints:
 
 - `GET /health/` - Health check
-- `POST /payments/` - Crear pago (50% fallo aleatorio)
+- `POST /payments/` - Crear pago (5% fallo aleatorio)
 - `POST /payments/{id}/refund/` - Reembolsar pago (compensación)
 
 #### Modelo de Datos:
@@ -304,15 +304,15 @@ class Payment(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en decrementos
+- **30% de probabilidad de fallo aleatorio** (simula falta de stock)
 - Retorna 200 (éxito) o 409 (stock insuficiente)
 - **NO tiene endpoint de compensación** (según requerimientos)
-- Simula latencia de 0.1 a 0.3 segundos
+- Simula latencia de 0.1 a 0.8 segundos
 
 #### Endpoints:
 
 - `GET /health/` - Health check
-- `POST /inventory/decrease/` - Decrementar inventario (50% fallo)
+- `POST /inventory/decrease/` - Decrementar inventario (30% fallo)
 
 #### Modelo de Datos:
 
@@ -370,16 +370,16 @@ class Inventory(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en creación
-- Retorna 200 (éxito) o 409 (conflicto)
+- **5% de probabilidad de fallo aleatorio** en creación
+- Retorna 201 (éxito) o 409 (conflicto)
 - Implementa endpoint de compensación (cancel)
-- Simula latencia de 0.1 a 0.3 segundos
+- Simula latencia de 0.05 a 0.2 segundos
 
 #### Endpoints:
 
 - `GET /health/` - Health check
-- `POST /purchases/` - Crear compra (50% fallo aleatorio)
-- `DELETE /purchases/{id}/cancel/` - Cancelar compra (compensación)
+- `POST /purchases/` - Crear compra (5% fallo aleatorio)
+- `DELETE /purchases/{transaction_id}/cancel/` - Cancelar compra (compensación)
 
 #### Modelo de Datos:
 
@@ -490,7 +490,7 @@ Traefik enruta las peticiones según el path:
 
 | Path Original                     | Redirige a                   | Servicio     |
 | --------------------------------- | ---------------------------- | ------------ |
-| `http://localhost/orchestrator/*` | `http://orchestrator:8000/*` | Orchestrator |
+| `http://localhost/saga/*`         | `http://orchestrator:8000/*` | Orchestrator |
 | `http://localhost/catalog/*`      | `http://catalog:8001/*`      | Catalog      |
 | `http://localhost/payments/*`     | `http://payments:8002/*`     | Payments     |
 | `http://localhost/inventory/*`    | `http://inventory:8003/*`    | Inventory    |
@@ -504,18 +504,16 @@ Cada servicio tiene etiquetas que Traefik lee para configurar el enrutamiento:
 # Ejemplo: Orchestrator
 labels:
   - "traefik.enable=true"
-  - "traefik.http.routers.orchestrator.rule=PathPrefix(`/orchestrator`)"
+  - "traefik.docker.network=traefik-public"
+  - "traefik.http.routers.orchestrator.rule=PathPrefix(`/saga`)"
   - "traefik.http.routers.orchestrator.entrypoints=web"
   - "traefik.http.services.orchestrator.loadbalancer.server.port=8000"
-  - "traefik.http.middlewares.orchestrator-stripprefix.stripprefix.prefixes=/orchestrator"
-  - "traefik.http.routers.orchestrator.middlewares=orchestrator-stripprefix"
 ```
 
 **Explicación:**
 
 - `traefik.enable=true` - Habilita Traefik para este servicio
-- `PathPrefix(/orchestrator)` - Coincide con URLs que empiezan con /orchestrator
-- `stripprefix` - Remueve el prefijo antes de enviar al servicio backend
+- `PathPrefix(/saga)` - Coincide con URLs que empiezan con /saga
 - `loadbalancer.server.port` - Puerto interno del servicio
 
 ### Dashboard de Traefik
@@ -531,24 +529,18 @@ El dashboard muestra:
 
 ### Ejemplos de Uso con Traefik
 
-#### Sin Traefik (acceso directo):
+#### Probar transacción (endpoint principal):
 
-```bash
-# Acceso directo a cada servicio
-curl http://localhost:8000/saga/transaction  # Orchestrator
-curl http://localhost:8001/products/random/  # Catalog
-curl http://localhost:8002/health/           # Payments
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
 ```
 
-#### Con Traefik (a través del puerto 80):
-
 ```bash
-# Todo a través de Traefik en puerto 80
-curl http://localhost/orchestrator/saga/transaction
-curl http://localhost/catalog/products/random/
-curl http://localhost/payments/health/
-curl http://localhost/inventory/health/
-curl http://localhost/purchases/health/
+# Bash/curl
+curl -X POST http://localhost/saga/transaction \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "1", "amount": 100}'
 ```
 
 ### Ventajas de Usar Traefik
@@ -651,10 +643,14 @@ Compensación (orden reverso):
 
 ### Probabilidades
 
-Dado que cada servicio tiene 50% de fallo (excepto catalog):
+Dado que cada servicio tiene diferentes tasas de fallo (excepto catalog que siempre es OK):
 
-- **Probabilidad de éxito:** 0.5 × 0.5 × 0.5 = **12.5%**
-- **Probabilidad de fallo:** **87.5%**
+- **Payments:** 95% éxito
+- **Inventory:** 70% éxito  
+- **Purchases:** 95% éxito
+
+**Probabilidad de éxito total:** 0.95 × 0.70 × 0.95 = **63.2%**  
+**Probabilidad de fallo:** **36.8%**
 
 ---
 
@@ -861,21 +857,21 @@ docker compose up --build
 
 ### Verificación de Salud
 
-Verifica que todos los servicios estén respondiendo:
+Los health checks son internos para Docker. Para verificar que el sistema funciona, ejecuta una transacción:
+
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
+```
 
 ```bash
-# Health check de cada servicio
-curl http://localhost:8001/health/  # Catalog
-curl http://localhost:8002/health/  # Payments
-curl http://localhost:8003/health/  # Inventory
-curl http://localhost:8004/health/  # Purchases
+# Bash
+curl -X POST http://localhost/saga/transaction \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "1", "amount": 100}'
 ```
 
-Todos deben retornar algo similar a:
-
-```json
-{ "status": "healthy", "service": "catalog" }
-```
+Deberías recibir una respuesta con `status: "COMPLETED"` o `status: "FAILED"` (con compensaciones ejecutadas).
 
 ### Creación de Migraciones (Primera Ejecución)
 
@@ -903,80 +899,58 @@ docker exec ecommerce-purchases python manage.py migrate
 
 ## 📡 API Endpoints
 
-> **Nota:** Todos los endpoints se pueden acceder de dos formas:
->
-> 1. **Acceso directo**: `http://localhost:{puerto}/endpoint`
-> 2. **A través de Traefik**: `http://localhost/{servicio}/endpoint`
+### Endpoint Principal - Transacción Saga
 
-### Orchestrator (Puerto 8000)
+Este es el único endpoint que necesitas para probar el sistema completo:
 
-#### 1. Iniciar Transacción Saga
+#### POST /saga/transaction
 
-**Endpoint:** `POST /saga/transaction`
+**URL:** `http://localhost/saga/transaction`
 
 **Request Body:**
-
 ```json
 {
-  "user_id": "user-123",
-  "product_id": 1,
-  "amount": 99.99
+  "user_id": "1",
+  "amount": 100
 }
 ```
 
-**Ejemplo con curl:**
-
-```bash
-# Acceso directo
-curl -X POST http://localhost:8000/saga/transaction \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user-123",
-    "product_id": 1,
-    "amount": 99.99
-  }'
-
-# A través de Traefik
-curl -X POST http://localhost/orchestrator/saga/transaction \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user-123",
-    "product_id": 1,
-    "amount": 99.99
-  }'
+**Ejemplo con PowerShell:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
 ```
 
-**Respuesta Exitosa (200):**
+**Ejemplo con curl:**
+```bash
+curl -X POST http://localhost/saga/transaction \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "1", "amount": 100}'
+```
 
+**Respuesta Exitosa (COMPLETED):**
 ```json
 {
   "transaction_id": "e8065740-3844-4026-b366-be1d15580f64",
   "status": "COMPLETED",
-  "message": "Transaction completed successfully",
-  "details": {
-    "user_id": "user-123",
-    "product_id": "1",
-    "payment_id": "35",
-    "amount": 99.99
+  "steps": {
+    "catalog": {"status": "success", "product": {...}},
+    "payment": {"status": "success", "payment_id": 35},
+    "inventory": {"status": "success"},
+    "purchase": {"status": "success", "purchase_id": 12}
   },
-  "timestamp": "2025-11-14T04:09:06.888287"
+  "timestamp": "2025-12-01T04:09:06.888287"
 }
 ```
 
-**Respuesta Compensada (409):**
-
+**Respuesta con Fallo (FAILED - con compensación):**
 ```json
 {
   "transaction_id": "24f59cbe-0b89-427c-8180-2c3b6c8967b8",
-  "status": "COMPENSATED",
-  "message": "Transaction failed and was reverted",
-  "details": {
-    "user_id": "user-123",
-    "product_id": null,
-    "payment_id": null,
-    "error": "409: payments conflict: Error processing payment"
-  },
-  "timestamp": "2025-11-14T04:06:24.487881"
+  "status": "FAILED",
+  "failed_step": "inventory",
+  "error": "Sin stock disponible",
+  "compensations": ["payment refunded"],
+  "timestamp": "2025-12-01T04:06:24.487881"
 }
 ```
 
@@ -1037,13 +1011,7 @@ curl http://localhost:8000/saga/transactions | jq
 
 ### Catalog (Puerto 8001)
 
-#### 1. Health Check
-
-```bash
-curl http://localhost:8001/health/
-```
-
-#### 2. Obtener Producto Aleatorio
+#### Obtener Producto Aleatorio
 
 ```bash
 curl http://localhost:8001/products/random/
@@ -1064,13 +1032,7 @@ curl http://localhost:8001/products/random/
 
 ### Payments (Puerto 8002)
 
-#### 1. Health Check
-
-```bash
-curl http://localhost:8002/health/
-```
-
-#### 2. Crear Pago (50% fallo)
+#### 1. Crear Pago (5% fallo)
 
 ```bash
 curl -X POST http://localhost:8002/payments/ \
@@ -1102,7 +1064,7 @@ curl -X POST http://localhost:8002/payments/ \
 }
 ```
 
-#### 3. Reembolsar Pago (Compensación)
+#### 2. Reembolsar Pago (Compensación)
 
 ```bash
 curl -X POST http://localhost:8002/payments/42/refund/
@@ -1123,13 +1085,7 @@ curl -X POST http://localhost:8002/payments/42/refund/
 
 ### Inventory (Puerto 8003)
 
-#### 1. Health Check
-
-```bash
-curl http://localhost:8003/health/
-```
-
-#### 2. Decrementar Inventario (50% fallo)
+#### Decrementar Inventario (30% fallo - simula sin stock)
 
 ```bash
 curl -X POST http://localhost:8003/inventory/decrease/ \
@@ -1145,10 +1101,9 @@ curl -X POST http://localhost:8003/inventory/decrease/ \
 
 ```json
 {
-  "status": "success",
-  "message": "Inventory decreased successfully",
-  "product_id": "1",
-  "remaining_quantity": 98
+  "status": "updated",
+  "product_id": 1,
+  "remaining": 98
 }
 ```
 
@@ -1157,19 +1112,18 @@ curl -X POST http://localhost:8003/inventory/decrease/ \
 ```json
 {
   "status": "error",
-  "message": "Insufficient stock for product 1 (random failure)"
+  "code": "INSUFFICIENT_STOCK",
+  "message": "Sin stock disponible",
+  "details": {
+    "product_id": 1,
+    "reason": "Simulated: No stock for product 1"
+  }
 }
 ```
 
 ### Purchases (Puerto 8004)
 
-#### 1. Health Check
-
-```bash
-curl http://localhost:8004/health/
-```
-
-#### 2. Crear Compra (50% fallo)
+#### 1. Crear Compra (5% fallo)
 
 ```bash
 curl -X POST http://localhost:8004/purchases/ \
@@ -1183,12 +1137,13 @@ curl -X POST http://localhost:8004/purchases/ \
   }'
 ```
 
-**Respuesta Exitosa (200):**
+**Respuesta Exitosa (201):**
 
 ```json
 {
   "purchase_id": 15,
-  "status": "success"
+  "status": "success",
+  "transaction_id": "txn-456"
 }
 ```
 
@@ -1202,19 +1157,19 @@ curl -X POST http://localhost:8004/purchases/ \
 }
 ```
 
-#### 3. Cancelar Compra (Compensación)
+#### 2. Cancelar Compra (Compensación)
 
 ```bash
-curl -X DELETE http://localhost:8004/purchases/15/cancel/
+curl -X DELETE http://localhost:8004/purchases/txn-456/cancel/
 ```
 
 **Respuesta:**
 
 ```json
 {
-  "status": "success",
+  "status": "cancelled",
   "message": "Purchase cancelled successfully",
-  "transaction_id": "15"
+  "transaction_id": "txn-456"
 }
 ```
 
