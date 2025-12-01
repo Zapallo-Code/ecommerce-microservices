@@ -1,5 +1,3 @@
-"""ASGI config for inventory microservice."""
-
 import os
 from django.core.asgi import get_asgi_application
 

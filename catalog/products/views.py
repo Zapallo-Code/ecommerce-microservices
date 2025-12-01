@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class RandomProductView(APIView):
-    
     def __init__(self, service: IProductService = None, **kwargs):
         super().__init__(**kwargs)
         self.service = service or ProductService()
@@ -25,7 +24,7 @@ class RandomProductView(APIView):
     def get(self, request):
         start_time = time.time()
         logger.info("Random product request received")
-        
+
         try:
             # Simulate latency (0.1 to 0.5 seconds)
             latency = random.uniform(0.1, 0.5)
@@ -56,11 +55,14 @@ class RandomProductView(APIView):
             # Return product data using serializer
             serializer = ProductRandomSerializer(product)
             return Response(serializer.data, status=status.HTTP_200_OK)
-            
+
         except DatabaseError as e:
             logger.error(f"Database error in random product: {str(e)}", exc_info=True)
             return Response(
-                {"error": "Database error occurred", "detail": "Unable to retrieve product"},
+                {
+                    "error": "Database error occurred",
+                    "detail": "Unable to retrieve product",
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception as e:

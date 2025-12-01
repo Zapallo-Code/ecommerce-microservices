@@ -18,7 +18,6 @@ class CompensationService:
         should_compensate: bool,
         compensation_fn,
     ) -> bool:
-        """Execute a compensation action with consistent error handling."""
         if not should_compensate:
             return True
 
@@ -31,7 +30,6 @@ class CompensationService:
             return False
 
     async def compensate_payment(self, transaction: TransactionDetail) -> bool:
-        """Compensate payment transaction."""
         return await self._execute_compensation(
             name=f"payment {transaction.payment_id}",
             should_compensate=bool(transaction.payment_id),
@@ -44,10 +42,10 @@ class CompensationService:
         )
 
     async def compensate_inventory(self, transaction: TransactionDetail) -> bool:
-        """Compensate inventory transaction - restore the stock."""
         return await self._execute_compensation(
             name=f"inventory for product {transaction.product_id}",
-            should_compensate=transaction.inventory_updated and bool(transaction.product_id),
+            should_compensate=transaction.inventory_updated
+            and bool(transaction.product_id),
             compensation_fn=lambda: self.client.call_service(
                 "inventory",
                 "/inventory/compensate/",
@@ -60,13 +58,12 @@ class CompensationService:
                         "reason": "Transaction compensation",
                         "original_transaction": transaction.transaction_id,
                         "original_operation_id": transaction.inventory_operation_id,
-                    }
+                    },
                 },
             ),
         )
 
     async def compensate_purchase(self, transaction: TransactionDetail) -> bool:
-        """Compensate purchase transaction."""
         return await self._execute_compensation(
             name=f"purchase {transaction.transaction_id}",
             should_compensate=transaction.purchase_registered,

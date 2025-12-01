@@ -1,1 +1,0 @@
-"""Purchases application package."""

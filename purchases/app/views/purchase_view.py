@@ -28,7 +28,6 @@ class BasePurchaseView(APIView):
 
     @property
     def service(self) -> PurchaseService:
-        """Lazy initialization of service (improves performance)."""
         if self._service is None:
             self._service = self.service_class()
         return self._service

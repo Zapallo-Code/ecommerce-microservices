@@ -6,11 +6,11 @@ from django.urls import reverse
 from app.models.purchase import Purchase
 
 
-class PurchaseIntegrationTests(TestCase):  # noqa: D101
-    def setUp(self):  # noqa: D102
+class PurchaseIntegrationTests(TestCase):
+    def setUp(self):
         self.client = Client()
 
-    def test_purchase_lifecycle(self):  # noqa: D102
+    def test_purchase_lifecycle(self):
         # 1. Create purchase
         create_data = {
             "transaction_id": "lifecycle-test-001",
@@ -48,7 +48,7 @@ class PurchaseIntegrationTests(TestCase):  # noqa: D101
         purchase.refresh_from_db()
         self.assertEqual(purchase.status, Purchase.STATUS_CANCELLED)
 
-    def test_multiple_purchases_same_user(self):  # noqa: D102
+    def test_multiple_purchases_same_user(self):
         base_data = {
             "user_id": "user-multi",
             "product_id": "prod-456",
@@ -70,7 +70,7 @@ class PurchaseIntegrationTests(TestCase):  # noqa: D101
         purchases = Purchase.objects.filter(user_id="user-multi")
         self.assertEqual(purchases.count(), 3)
 
-    def test_purchases_urls_configured(self):  # noqa: D102
+    def test_purchases_urls_configured(self):
         # Health check
         health_response = self.client.get(reverse("health-check"))
         self.assertNotEqual(health_response.status_code, 404)
@@ -83,7 +83,7 @@ class PurchaseIntegrationTests(TestCase):  # noqa: D101
         )
         self.assertNotEqual(create_response.status_code, 404)
 
-    def test_purchase_data_integrity(self):  # noqa: D102
+    def test_purchase_data_integrity(self):
         data = {
             "transaction_id": "integrity-test",
             "user_id": "user-integrity",

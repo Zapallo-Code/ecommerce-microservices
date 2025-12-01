@@ -4,8 +4,6 @@ from django.db import models
 
 
 class PurchaseStatus(StrEnum):
-    """Enum for purchase status values in Saga pattern."""
-
     PENDING = "pending"
     SUCCESS = "success"
     CANCELLED = "cancelled"

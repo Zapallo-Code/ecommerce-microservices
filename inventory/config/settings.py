@@ -1,7 +1,3 @@
-"""
-Django settings for inventory microservice.
-"""
-
 import os
 from pathlib import Path
 

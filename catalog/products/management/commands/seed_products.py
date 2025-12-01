@@ -1,11 +1,9 @@
-"""
-Management command to seed initial products in the catalog database.
-"""
 from django.core.management.base import BaseCommand
 from products.models import Product
 
+
 class Command(BaseCommand):
-    help = 'Seed the database with initial products'
+    help = "Seed the database with initial products"
 
     # Pre-defined products for consistent seeding
     SEED_PRODUCTS = [
@@ -93,43 +91,44 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--clear',
-            action='store_true',
-            help='Clear existing products before seeding',
+            "--clear",
+            action="store_true",
+            help="Clear existing products before seeding",
         )
 
     def handle(self, *args, **options):
-        if options['clear']:
-            self.stdout.write('Clearing existing products...')
+        if options["clear"]:
+            self.stdout.write("Clearing existing products...")
             Product.objects.all().delete()
-            self.stdout.write(self.style.SUCCESS('Cleared all products'))
+            self.stdout.write(self.style.SUCCESS("Cleared all products"))
 
         created_count = 0
         updated_count = 0
 
         for product_data in self.SEED_PRODUCTS:
             product, created = Product.objects.update_or_create(
-                name=product_data['name'],
-                defaults=product_data
+                name=product_data["name"], defaults=product_data
             )
             if created:
                 created_count += 1
                 self.stdout.write(
-                    self.style.SUCCESS(f'Created product: {product.name} (ID: {product.id})')
+                    self.style.SUCCESS(
+                        f"Created product: {product.name} (ID: {product.id})"
+                    )
                 )
             else:
                 updated_count += 1
-                self.stdout.write(
-                    f'Updated product: {product.name} (ID: {product.id})'
-                )
+                self.stdout.write(f"Updated product: {product.name} (ID: {product.id})")
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'\nSeeding complete! Created: {created_count}, Updated: {updated_count}'
+                f"\nSeeding complete! Created: {created_count}, Updated: {updated_count}"
             )
         )
-        
+
         # List all products with their IDs
-        self.stdout.write('\nCurrent products in database:')
+        self.stdout.write("\nCurrent products in database:")
         for product in Product.objects.all():
-            self.stdout.write(f'  ID: {product.id} - {product.name} (Stock: {product.stock})')
+            self.stdout.write(
+                f"  ID: {product.id} - {product.name} (Stock: {product.stock})"
+            )

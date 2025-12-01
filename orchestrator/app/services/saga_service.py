@@ -33,14 +33,12 @@ class SagaService:
         step_name: str,
         step_fn,
     ) -> None:
-        """Execute a saga step with logging and state persistence."""
         logger.info(f"[{transaction.transaction_id}] {step_name}")
         await step_fn(transaction)
         transaction_store.save(transaction)
         logger.info(f"[{transaction.transaction_id}] {step_name} completed")
 
     async def _step_get_product(self, transaction: TransactionDetail) -> None:
-        """Get product from catalog."""
         data = {"user_id": transaction.user_id, "amount": transaction.amount}
         product_response = await self.client.call_service(
             "catalog", "/products/random/", method="POST", data=data
@@ -52,7 +50,6 @@ class SagaService:
         )
 
     async def _step_process_payment(self, transaction: TransactionDetail) -> None:
-        """Process payment for the transaction."""
         payment_data: dict[str, object] = {
             "user_id": transaction.user_id,
             "amount": transaction.amount,
@@ -68,7 +65,6 @@ class SagaService:
         )
 
     async def _step_update_inventory(self, transaction: TransactionDetail) -> None:
-        """Update inventory for the product."""
         operation_id = str(uuid.uuid4())
         inventory_data: dict[str, object] = {
             "product_id": transaction.product_id,
@@ -85,7 +81,6 @@ class SagaService:
         transaction.inventory_updated = True
 
     async def _step_register_purchase(self, transaction: TransactionDetail) -> None:
-        """Register the purchase."""
         purchase_data: dict[str, object] = {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
@@ -104,7 +99,6 @@ class SagaService:
     async def execute_saga(
         self, purchase_request: TransactionRequest
     ) -> TransactionDetail:
-        """Execute the complete saga orchestration."""
         transaction_id = str(uuid.uuid4())
         transaction = self._create_transaction(purchase_request, transaction_id)
         transaction_store.save(transaction)
