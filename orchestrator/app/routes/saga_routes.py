@@ -16,6 +16,11 @@ router = APIRouter(prefix="/saga", tags=["Saga Orchestrator"])
 saga_service = SagaService()
 
 
+@router.get("/")
+async def saga_health() -> dict[str, str]:
+    return {"status": "healthy", "service": "saga-orchestrator"}
+
+
 @router.post("/transaction", response_model=TransactionResponse)
 async def initiate_transaction(request: TransactionRequest) -> TransactionResponse:
     try:

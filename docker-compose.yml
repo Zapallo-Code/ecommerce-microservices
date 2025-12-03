@@ -6,10 +6,8 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -32,19 +30,25 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-    ports:
-      - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ecommerce-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.catalog.rule=PathPrefix(`/api/catalog`)"
+      - "traefik.http.routers.catalog.entrypoints=web"
+      - "traefik.http.services.catalog.loadbalancer.server.port=8001"
+      - "traefik.http.middlewares.catalog-strip.stripprefix.prefixes=/api/catalog"
+      - "traefik.http.routers.catalog.middlewares=catalog-strip"
     command:
       - sh
       - -c
       - |
         python manage.py migrate --noinput &&
-        python manage.py seed_products &&
+        python manage.py seed_products || true &&
         python manage.py runserver 0.0.0.0:8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health/"]
@@ -66,13 +70,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-    ports:
-      - "8002:8002"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ecommerce-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.payments.rule=PathPrefix(`/api/payments`)"
+      - "traefik.http.routers.payments.entrypoints=web"
+      - "traefik.http.services.payments.loadbalancer.server.port=8002"
+      - "traefik.http.middlewares.payments-strip.stripprefix.prefixes=/api/payments"
+      - "traefik.http.routers.payments.middlewares=payments-strip"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/payments/health/"]
       interval: 10s
@@ -100,19 +110,25 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-    ports:
-      - "8003:8003"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ecommerce-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inventory.rule=PathPrefix(`/api/inventory`)"
+      - "traefik.http.routers.inventory.entrypoints=web"
+      - "traefik.http.services.inventory.loadbalancer.server.port=8003"
+      - "traefik.http.middlewares.inventory-strip.stripprefix.prefixes=/api/inventory"
+      - "traefik.http.routers.inventory.middlewares=inventory-strip"
     command:
       - sh
       - -c
       - |
         python manage.py migrate --noinput &&
-        python manage.py seed_inventory &&
+        python manage.py seed_inventory || true &&
         python manage.py runserver 0.0.0.0:8003
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8003/health/ || exit 1"]
@@ -134,13 +150,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-    ports:
-      - "8004:8004"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - ecommerce-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.purchases.rule=PathPrefix(`/api/purchases`)"
+      - "traefik.http.routers.purchases.entrypoints=web"
+      - "traefik.http.services.purchases.loadbalancer.server.port=8004"
+      - "traefik.http.middlewares.purchases-strip.stripprefix.prefixes=/api/purchases"
+      - "traefik.http.routers.purchases.middlewares=purchases-strip"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health/"]
       interval: 10s
@@ -159,14 +181,12 @@ services:
     build: ./orchestrator
     container_name: ecommerce-orchestrator
     environment:
-      CATALOG_URL: http://catalog:8001
-      PAYMENTS_URL: http://payments:8002
-      INVENTORY_URL: http://inventory:8003
-      PURCHASES_URL: http://purchases:8004
+      CATALOG_URL: http://traefik/api/catalog
+      PAYMENTS_URL: http://traefik/api/payments
+      INVENTORY_URL: http://traefik/api/inventory
+      PURCHASES_URL: http://traefik/api/purchases
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WORKERS: "1"
-    ports:
-      - "8000:8000"
     depends_on:
       catalog:
         condition: service_healthy
@@ -178,11 +198,21 @@ services:
         condition: service_healthy
     networks:
       - ecommerce-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.orchestrator.rule=PathPrefix(`/api/saga`)"
+      - "traefik.http.routers.orchestrator.entrypoints=web"
+      - "traefik.http.services.orchestrator.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.orchestrator-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.orchestrator.middlewares=orchestrator-strip"
 
 networks:
   ecommerce-network:
     driver: bridge
     name: ecommerce-network
+  traefik-public:
+    external: true
 
 volumes:
   postgres_data:

@@ -5,6 +5,7 @@ from rest_framework import status
 from .services import InventoryService, InsufficientStockError
 from .serializers import (
     DecreaseInventorySerializer,
+    CompensateInventorySerializer,
     InventorySerializer,
 )
 
@@ -72,3 +73,33 @@ class HealthCheckView(APIView):
             {"status": "healthy", "service": "inventory"},
             status=status.HTTP_200_OK,
         )
+
+
+class CompensateInventoryView(APIView):
+    def post(self, request):
+        serializer = CompensateInventorySerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Invalid request", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = serializer.validated_data
+
+        try:
+            result = InventoryService.compensate(
+                operation_id=data["operation_id"],
+                product_id=data["product_id"],
+                quantity=data["quantity"],
+                metadata=data.get("metadata"),
+            )
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error in compensate: {str(e)}", exc_info=True)
+            # Always return 200 for compensations to not block saga
+            return Response(
+                {"status": "compensated", "error": str(e)},
+                status=status.HTTP_200_OK,
+            )

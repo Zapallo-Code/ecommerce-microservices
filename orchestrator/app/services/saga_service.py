@@ -39,15 +39,17 @@ class SagaService:
         logger.info(f"[{transaction.transaction_id}] {step_name} completed")
 
     async def _step_get_product(self, transaction: TransactionDetail) -> None:
-        data = {"user_id": transaction.user_id, "amount": transaction.amount}
         product_response = await self.client.call_service(
-            "catalog", "/products/random/", method="POST", data=data
+            "catalog", "/products/random/", method="GET"
         )
         transaction.product_id = (
             str(product_response["product_id"])
             if product_response.get("product_id")
             else None
         )
+        # Update amount with product price if available
+        if product_response.get("price"):
+            transaction.amount = float(product_response["price"])
 
     async def _step_process_payment(self, transaction: TransactionDetail) -> None:
         payment_data: dict[str, object] = {
