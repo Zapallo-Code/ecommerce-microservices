@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from app.models import TransactionDetail
 
@@ -17,7 +18,6 @@ class CompensationService:
         should_compensate: bool,
         compensation_fn,
     ) -> bool:
-        """Execute a compensation action with consistent error handling."""
         if not should_compensate:
             return True
 
@@ -30,7 +30,6 @@ class CompensationService:
             return False
 
     async def compensate_payment(self, transaction: TransactionDetail) -> bool:
-        """Compensate payment transaction."""
         return await self._execute_compensation(
             name=f"payment {transaction.payment_id}",
             should_compensate=bool(transaction.payment_id),
@@ -42,8 +41,29 @@ class CompensationService:
             ),
         )
 
+    async def compensate_inventory(self, transaction: TransactionDetail) -> bool:
+        return await self._execute_compensation(
+            name=f"inventory for product {transaction.product_id}",
+            should_compensate=transaction.inventory_updated
+            and bool(transaction.product_id),
+            compensation_fn=lambda: self.client.call_service(
+                "inventory",
+                "/inventory/compensate/",
+                method="POST",
+                data={
+                    "operation_id": str(uuid.uuid4()),  # New operation for compensation
+                    "product_id": int(transaction.product_id),
+                    "quantity": 1,
+                    "metadata": {
+                        "reason": "Transaction compensation",
+                        "original_transaction": transaction.transaction_id,
+                        "original_operation_id": transaction.inventory_operation_id,
+                    },
+                },
+            ),
+        )
+
     async def compensate_purchase(self, transaction: TransactionDetail) -> bool:
-        """Compensate purchase transaction."""
         return await self._execute_compensation(
             name=f"purchase {transaction.transaction_id}",
             should_compensate=transaction.purchase_registered,
@@ -57,14 +77,14 @@ class CompensationService:
     async def execute_all_compensations(self, transaction: TransactionDetail) -> None:
         """
         Execute compensations in reverse order.
-        Order: purchase -> payment (reverse of execution)
-        Note: catalog and inventory do not need compensation.
+        Order: purchase -> inventory -> payment (reverse of execution)
         """
         logger.warning(f"Starting compensations for {transaction.transaction_id}")
 
-        # Compensations in reverse order
+        # Compensations in reverse order of execution
         compensations = [
             ("purchase", self.compensate_purchase),
+            ("inventory", self.compensate_inventory),
             ("payment", self.compensate_payment),
         ]
 

@@ -1,8 +1,3 @@
-"""
-Tests for the orchestrator microservice.
-Tests the SAGA pattern, distributed transactions, and compensations.
-"""
-
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,7 +12,6 @@ from app.storage.transaction_store import transaction_store
 
 @pytest.fixture(autouse=True)
 def clear_transactions():
-    """Clear transaction store before each test."""
     transaction_store._transactions.clear()
     yield
     transaction_store._transactions.clear()
@@ -25,7 +19,6 @@ def clear_transactions():
 
 @pytest_asyncio.fixture
 async def client():
-    """Provide async test client."""
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
     ) as ac:
@@ -33,21 +26,15 @@ async def client():
 
 
 class TestHealthEndpoint:
-    """Test cases for the health check endpoint."""
-
     @pytest.mark.asyncio
     async def test_health_check(self, client):
-        """Test that health check endpoint returns OK."""
         response = await client.get("/health/")
         assert response.status_code == 200
 
 
 class TestTransactionCreation:
-    """Test cases for SAGA transaction creation."""
-
     @pytest.mark.asyncio
     async def test_successful_transaction(self, client):
-        """Test successful end-to-end transaction."""
         with patch("app.services.http_client.httpx.AsyncClient") as mock_client:
             # Mock all service responses
             mock_instance = AsyncMock()
@@ -106,7 +93,6 @@ class TestTransactionCreation:
 
     @pytest.mark.asyncio
     async def test_transaction_with_payment_failure(self, client):
-        """Test transaction that fails at payment step and compensates."""
         with patch("app.services.http_client.httpx.AsyncClient") as mock_client:
             mock_instance = AsyncMock()
             mock_client.return_value.__aenter__.return_value = mock_instance
@@ -152,7 +138,6 @@ class TestTransactionCreation:
 
     @pytest.mark.asyncio
     async def test_transaction_missing_user_id(self, client):
-        """Test transaction with missing user_id."""
         response = await client.post(
             "/saga/transaction",
             json={"amount": 99.99},  # Missing user_id
@@ -162,7 +147,6 @@ class TestTransactionCreation:
 
     @pytest.mark.asyncio
     async def test_transaction_missing_amount(self, client):
-        """Test transaction with missing amount."""
         response = await client.post(
             "/saga/transaction",
             json={"user_id": "user-001"},  # Missing amount
@@ -172,7 +156,6 @@ class TestTransactionCreation:
 
     @pytest.mark.asyncio
     async def test_transaction_invalid_amount(self, client):
-        """Test transaction with invalid amount."""
         response = await client.post(
             "/saga/transaction",
             json={"user_id": "user-001", "amount": -50.00},  # Negative amount
@@ -182,7 +165,6 @@ class TestTransactionCreation:
 
     @pytest.mark.asyncio
     async def test_transaction_with_inventory_failure(self, client):
-        """Test transaction that fails at inventory step."""
         with patch("app.services.http_client.httpx.AsyncClient") as mock_client:
             mock_instance = AsyncMock()
             mock_client.return_value.__aenter__.return_value = mock_instance
@@ -219,11 +201,8 @@ class TestTransactionCreation:
 
 
 class TestTransactionStatus:
-    """Test cases for retrieving transaction status."""
-
     @pytest.mark.asyncio
     async def test_get_transaction_status_not_found(self, client):
-        """Test getting status of non-existent transaction."""
         response = await client.get("/saga/status/nonexistent-txn-123")
 
         assert response.status_code == 404
@@ -232,7 +211,6 @@ class TestTransactionStatus:
 
     @pytest.mark.asyncio
     async def test_get_transaction_status_success(self, client):
-        """Test getting status of existing transaction."""
         # First create a transaction
         from app.storage.transaction_store import TransactionDetail
         from datetime import datetime
@@ -262,11 +240,8 @@ class TestTransactionStatus:
 
 
 class TestTransactionListing:
-    """Test cases for listing all transactions."""
-
     @pytest.mark.asyncio
     async def test_list_transactions_empty(self, client):
-        """Test listing transactions when none exist."""
         response = await client.get("/saga/transactions")
 
         assert response.status_code == 200
@@ -276,7 +251,6 @@ class TestTransactionListing:
 
     @pytest.mark.asyncio
     async def test_list_transactions_with_data(self, client):
-        """Test listing multiple transactions."""
         from app.storage.transaction_store import TransactionDetail
         from datetime import datetime
 
@@ -307,11 +281,8 @@ class TestTransactionListing:
 
 
 class TestCompensationLogic:
-    """Test cases for compensation/rollback logic."""
-
     @pytest.mark.asyncio
     async def test_compensation_after_purchase_failure(self, client):
-        """Test that payment and inventory are compensated when purchase fails."""
         with patch("app.services.http_client.httpx.AsyncClient") as mock_client:
             mock_instance = AsyncMock()
             mock_client.return_value.__aenter__.return_value = mock_instance
@@ -362,10 +333,7 @@ class TestCompensationLogic:
 
 
 class TestTransactionStore:
-    """Test cases for the transaction store."""
-
     def test_store_and_retrieve_transaction(self):
-        """Test storing and retrieving a transaction."""
         from app.storage.transaction_store import TransactionDetail
         from datetime import datetime
 
@@ -390,12 +358,10 @@ class TestTransactionStore:
         assert retrieved.amount == 150.00
 
     def test_get_nonexistent_transaction(self):
-        """Test retrieving a transaction that doesn't exist."""
         result = transaction_store.get("nonexistent-999")
         assert result is None
 
     def test_count_transactions(self):
-        """Test counting stored transactions."""
         from app.storage.transaction_store import TransactionDetail
         from datetime import datetime
 
@@ -415,7 +381,6 @@ class TestTransactionStore:
         assert transaction_store.count() == initial_count + 5
 
     def test_get_all_transactions(self):
-        """Test retrieving all transactions."""
         from app.storage.transaction_store import TransactionDetail
         from datetime import datetime
 

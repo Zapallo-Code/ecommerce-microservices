@@ -1,268 +1,182 @@
-"""
-Tests for the inventory microservice.
-Tests inventory decrease operations and health checks.
-"""
-
-from django.test import TestCase, Client
-from django.urls import reverse
-from inventory.models import Inventory
-import json
+from django.test import TestCase
+from django.conf import settings
+from rest_framework.test import APIClient
+from inventory.models import Inventory, InventoryOperation
+from inventory.services import InventoryService, InsufficientStockError
+import uuid
 
 
-class InventoryHealthCheckTests(TestCase):
-    """Test cases for the inventory health check endpoint."""
-
+class InventoryModelTest(TestCase):
     def setUp(self):
-        self.client = Client()
-        self.health_url = reverse("health-check")
+        self.inventory = Inventory.objects.create(product_id=1, stock=100, reserved=0)
 
-    def test_health_check_returns_200(self):
-        """Test that health check returns 200 OK."""
-        response = self.client.get(self.health_url)
-        self.assertEqual(response.status_code, 200)
-
-    def test_health_check_returns_correct_data(self):
-        """Test that health check returns correct JSON data."""
-        response = self.client.get(self.health_url)
-        data = response.json()
-        self.assertEqual(data["status"], "healthy")
-        self.assertEqual(data["service"], "inventory")
-        self.assertEqual(data["version"], "1.0.0")
-
-
-class InventoryModelTests(TestCase):
-    """Test cases for the Inventory model."""
-
-    def setUp(self):
-        self.inventory = Inventory.objects.create(product_id="TEST-001", stock=100)
-
-    def test_inventory_creation(self):
-        """Test creating an inventory record."""
-        self.assertEqual(self.inventory.product_id, "TEST-001")
+    def test_create_inventory(self):
+        self.assertEqual(self.inventory.product_id, 1)
         self.assertEqual(self.inventory.stock, 100)
+        self.assertEqual(self.inventory.available, 100)
 
-    def test_inventory_str_representation(self):
-        """Test the string representation of inventory."""
-        expected = "Product TEST-001: 100 units"
-        self.assertEqual(str(self.inventory), expected)
-
-    def test_inventory_unique_product_id(self):
-        """Test that product_id is unique."""
-        with self.assertRaises(Exception):
-            Inventory.objects.create(product_id="TEST-001", stock=50)
+    def test_available_stock(self):
+        self.inventory.reserved = 20
+        self.inventory.save()
+        self.assertEqual(self.inventory.available, 80)
 
 
-class DecreaseInventoryViewTests(TestCase):
-    """Test cases for the decrease inventory endpoint."""
-
+class InventoryServiceTest(TestCase):
     def setUp(self):
-        self.client = Client()
-        self.decrease_url = reverse("decrease-inventory")
-        self.inventory = Inventory.objects.create(product_id="1", stock=100)
+        # Disable random failures for deterministic tests
+        settings.NO_STOCK_RATE = 0.0
+        settings.SIMULATE_LATENCY = False
 
-    def test_decrease_inventory_success(self):
-        """Test successful inventory decrease."""
-        data = {"product_id": "1", "quantity": 10}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        self.inventory = Inventory.objects.create(product_id=1, stock=100)
+
+    def test_decrease_stock_success(self):
+        operation_id = uuid.uuid4()
+        result = InventoryService.decrease_stock(
+            operation_id=operation_id, product_id=1, quantity=10
         )
 
-        self.assertEqual(response.status_code, 200)
-        response_data = response.json()
+        self.assertEqual(result["status"], "updated")
+        self.assertEqual(result["remaining"], 90)
 
-        self.assertEqual(response_data["message"], "Inventory decreased successfully")
-        self.assertEqual(response_data["product_id"], "1")
-        self.assertEqual(response_data["quantity"], 10)
-        self.assertEqual(response_data["previous_stock"], 100)
-        self.assertEqual(response_data["current_stock"], 90)
-
-        # Verify database was updated
+        # Verify database
         self.inventory.refresh_from_db()
         self.assertEqual(self.inventory.stock, 90)
 
-    def test_decrease_inventory_insufficient_stock(self):
-        """Test decreasing inventory with insufficient stock."""
-        data = {"product_id": "1", "quantity": 150}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
-        )
+        # Verify operation recorded
+        op = InventoryOperation.objects.get(operation_id=operation_id)
+        self.assertEqual(op.status, "applied")
+        self.assertEqual(op.quantity, -10)
 
-        self.assertEqual(response.status_code, 409)
-        response_data = response.json()
+    def test_decrease_stock_insufficient(self):
+        operation_id = uuid.uuid4()
 
-        self.assertEqual(response_data["status"], "error")
-        self.assertIn("Insufficient stock", response_data["message"])
+        with self.assertRaises(InsufficientStockError):
+            InventoryService.decrease_stock(
+                operation_id=operation_id, product_id=1, quantity=150
+            )
 
-        # Verify stock was not changed
+        # Verify stock unchanged
         self.inventory.refresh_from_db()
         self.assertEqual(self.inventory.stock, 100)
 
-    def test_decrease_inventory_product_not_found(self):
-        """Test decreasing inventory for non-existent product creates it with default stock."""
-        data = {"product_id": "999", "quantity": 10}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+    def test_decrease_stock_idempotency(self):
+        operation_id = uuid.uuid4()
+
+        # First call
+        result1 = InventoryService.decrease_stock(
+            operation_id=operation_id, product_id=1, quantity=10
         )
 
-        # Service uses get_or_create, so new products are created with stock 100
-        self.assertEqual(response.status_code, 200)
-        response_data = response.json()
-
-        self.assertEqual(response_data["product_id"], "999")
-        self.assertEqual(response_data["previous_stock"], 100)
-        self.assertEqual(response_data["current_stock"], 90)
-        self.assertEqual(response_data["message"], "Inventory decreased successfully")
-
-    def test_decrease_inventory_invalid_quantity(self):
-        """Test decreasing inventory with invalid quantity."""
-        data = {"product_id": "1", "quantity": -5}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        # Second call with same operation_id
+        result2 = InventoryService.decrease_stock(
+            operation_id=operation_id, product_id=1, quantity=10
         )
 
-        self.assertEqual(response.status_code, 400)
-        response_data = response.json()
-        self.assertEqual(response_data["status"], "error")
+        # Stock should only decrease once
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.stock, 90)
 
-    def test_decrease_inventory_missing_fields(self):
-        """Test decreasing inventory with missing required fields."""
-        # Missing quantity - should default to 1 and succeed
-        data = {"product_id": "1"}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        # Should have only one operation
+        self.assertEqual(
+            InventoryOperation.objects.filter(operation_id=operation_id).count(), 1
         )
 
-        self.assertEqual(response.status_code, 200)
-        response_data = response.json()
-        self.assertEqual(response_data["quantity"], 1)
-
-        # Missing product_id - should fail
-        data = {"quantity": 10}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+    def test_compensate_success(self):
+        # First decrease stock
+        decrease_op_id = uuid.uuid4()
+        InventoryService.decrease_stock(
+            operation_id=decrease_op_id, product_id=1, quantity=30
         )
 
-        self.assertEqual(response.status_code, 400)
-
-    def test_decrease_inventory_zero_quantity(self):
-        """Test decreasing inventory with zero quantity."""
-        data = {"product_id": "1", "quantity": 0}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        # Then compensate
+        compensate_op_id = uuid.uuid4()
+        result = InventoryService.compensate(
+            operation_id=compensate_op_id, product_id=1, quantity=30
         )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(result["status"], "compensated")
+        self.assertEqual(result["new_stock"], 100)
 
-    def test_decrease_inventory_with_transaction_id(self):
-        """Test decreasing inventory with transaction ID."""
-        data = {"product_id": "1", "quantity": 5, "transaction_id": "test-txn-123"}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        # Verify database
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.stock, 100)
+
+        # Verify compensation recorded
+        op = InventoryOperation.objects.get(operation_id=compensate_op_id)
+        self.assertEqual(op.status, "reverted")
+        self.assertEqual(op.quantity, 30)
+
+    def test_compensate_idempotency(self):
+        compensate_op_id = uuid.uuid4()
+
+        # First compensation
+        result1 = InventoryService.compensate(
+            operation_id=compensate_op_id, product_id=1, quantity=20
         )
 
-        self.assertEqual(response.status_code, 200)
-        response_data = response.json()
-        self.assertIn("operation_id", response_data)
-
-    def test_decrease_inventory_includes_latency(self):
-        """Test that response includes latency information."""
-        data = {"product_id": "1", "quantity": 5}
-        response = self.client.post(
-            self.decrease_url,
-            data=json.dumps(data),
-            content_type="application/json",
+        # Second compensation with same operation_id
+        result2 = InventoryService.compensate(
+            operation_id=compensate_op_id, product_id=1, quantity=20
         )
 
-        self.assertEqual(response.status_code, 200)
-        response_data = response.json()
-        self.assertIn("latency_seconds", response_data)
-        # In test environment, latency is 0.0
-        self.assertEqual(response_data["latency_seconds"], 0.0)
+        # Stock should only increase once
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.stock, 120)
+
+        # Should have only one compensation operation
+        self.assertEqual(
+            InventoryOperation.objects.filter(
+                operation_id=compensate_op_id, status="reverted"
+            ).count(),
+            1,
+        )
 
 
-class InventoryIntegrationTests(TestCase):
-    """Integration tests for the inventory service."""
-
+class InventoryAPITest(TestCase):
     def setUp(self):
-        self.client = Client()
-        Inventory.objects.create(product_id="1", stock=100)
-        Inventory.objects.create(product_id="2", stock=50)
+        settings.NO_STOCK_RATE = 0.0
+        settings.SIMULATE_LATENCY = False
 
-    def test_multiple_decreases_on_same_product(self):
-        """Test multiple decrease operations on the same product."""
-        data = {"product_id": "1", "quantity": 10}
+        self.client = APIClient()
+        self.inventory = Inventory.objects.create(product_id=1, stock=100)
 
-        # First decrease
-        response1 = self.client.post(
-            reverse("decrease-inventory"),
-            data=json.dumps(data),
-            content_type="application/json",
-        )
-        self.assertEqual(response1.status_code, 200)
-        self.assertEqual(response1.json()["current_stock"], 90)
+    def test_decrease_endpoint_success(self):
+        data = {"operation_id": str(uuid.uuid4()), "product_id": 1, "quantity": 10}
 
-        # Second decrease
-        response2 = self.client.post(
-            reverse("decrease-inventory"),
-            data=json.dumps(data),
-            content_type="application/json",
-        )
-        self.assertEqual(response2.status_code, 200)
-        self.assertEqual(response2.json()["current_stock"], 80)
+        response = self.client.post("/inventory/decrease/", data, format="json")
 
-        # Verify final stock
-        inventory = Inventory.objects.get(product_id="1")
-        self.assertEqual(inventory.stock, 80)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "updated")
+        self.assertEqual(response.json()["remaining"], 90)
 
-    def test_concurrent_product_operations(self):
-        """Test operations on different products."""
-        data1 = {"product_id": "1", "quantity": 20}
-        data2 = {"product_id": "2", "quantity": 15}
+    def test_decrease_endpoint_no_stock(self):
+        data = {"operation_id": str(uuid.uuid4()), "product_id": 1, "quantity": 150}
 
-        response1 = self.client.post(
-            reverse("decrease-inventory"),
-            data=json.dumps(data1),
-            content_type="application/json",
-        )
-        response2 = self.client.post(
-            reverse("decrease-inventory"),
-            data=json.dumps(data2),
-            content_type="application/json",
-        )
+        response = self.client.post("/inventory/decrease/", data, format="json")
 
-        self.assertEqual(response1.status_code, 200)
-        self.assertEqual(response2.status_code, 200)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["status"], "no_stock")
 
-        # Verify both products updated correctly
-        inv1 = Inventory.objects.get(product_id="1")
-        inv2 = Inventory.objects.get(product_id="2")
-        self.assertEqual(inv1.stock, 80)
-        self.assertEqual(inv2.stock, 35)
+    def test_compensate_endpoint(self):
+        data = {"operation_id": str(uuid.uuid4()), "product_id": 1, "quantity": 20}
 
-    def test_inventory_urls_configured(self):
-        """Test that all inventory URLs are properly configured."""
-        health_response = self.client.get(reverse("health-check"))
-        self.assertNotEqual(health_response.status_code, 404)
+        response = self.client.post("/inventory/compensate/", data, format="json")
 
-        decrease_response = self.client.post(
-            reverse("decrease-inventory"),
-            data=json.dumps({"product_id": "1", "quantity": 1}),
-            content_type="application/json",
-        )
-        self.assertNotEqual(decrease_response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "compensated")
+        self.assertEqual(response.json()["new_stock"], 120)
+
+    def test_get_inventory_endpoint(self):
+        response = self.client.get("/inventory/1/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["product_id"], 1)
+        self.assertEqual(data["stock"], 100)
+
+    def test_health_check_endpoint(self):
+        response = self.client.get("/inventory/health/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "healthy")
+        self.assertEqual(response.json()["service"], "inventory")

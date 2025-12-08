@@ -1,8 +1,3 @@
-"""
-Repository layer for Purchase entity (simplified Saga pattern).
-Provides data access abstraction following the Repository pattern.
-"""
-
 from decimal import Decimal
 
 from django.db.models import QuerySet
@@ -11,26 +6,8 @@ from app.models import Purchase
 
 
 class PurchaseRepository:
-    """
-    Repository for Purchase entity operations.
-
-    Encapsulates data access logic and provides clean interface.
-    Uses minimal implementation following KISS and YAGNI principles.
-    For the simplified Saga pattern, most operations are handled
-    directly on the Purchase model.
-    """
-
     @classmethod
     def get_by_transaction_id(cls, transaction_id: str) -> Purchase | None:
-        """
-        Retrieve a purchase by transaction ID.
-
-        Args:
-            transaction_id: Unique transaction ID from orchestrator
-
-        Returns:
-            Purchase instance if found, None otherwise
-        """
         try:
             return Purchase.objects.get(transaction_id=transaction_id)
         except Purchase.DoesNotExist:
@@ -42,16 +19,6 @@ class PurchaseRepository:
         user_id: str,
         limit: int = 100,
     ) -> QuerySet[Purchase]:
-        """
-        Get purchases for a specific user.
-
-        Args:
-            user_id: User identifier
-            limit: Maximum number of results (default: 100)
-
-        Returns:
-            QuerySet of Purchase instances (lazy evaluation)
-        """
         return Purchase.objects.filter(user_id=user_id)[:limit]
 
     @classmethod
@@ -65,24 +32,6 @@ class PurchaseRepository:
         quantity: int = 1,
         status: str | None = None,
     ) -> Purchase:
-        """
-        Create a new purchase record.
-
-        Note: No validation of user_id/product_id performed here.
-        The Saga orchestrator validates these before calling this service.
-
-        Args:
-            transaction_id: Unique transaction ID from orchestrator
-            user_id: User identifier (pre-validated)
-            product_id: Product identifier (pre-validated)
-            payment_id: Payment transaction identifier
-            amount: Total purchase amount (pre-calculated)
-            quantity: Quantity of items (default: 1)
-            status: Initial status (default: PENDING)
-
-        Returns:
-            Created Purchase instance
-        """
         kwargs = {
             "transaction_id": transaction_id,
             "user_id": user_id,

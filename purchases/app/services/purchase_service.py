@@ -1,9 +1,3 @@
-"""
-Service layer for Purchase business logic.
-Implements Saga pattern with simulated failures and latency.
-Follows SOLID principles and clean code practices.
-"""
-
 import logging
 import os
 import random
@@ -19,20 +13,14 @@ from app.repositories import PurchaseRepository
 logger = logging.getLogger(__name__)
 
 
-class PurchaseService:
-    """
-    Service layer for purchase operations.
-    Implements Saga orchestration with simulated failures and latency.
-    """
-
+class PurchaseService:  # noqa: D101
     # Saga simulation configuration
-    SUCCESS_RATE = 0.5  # 50% success rate
+    SUCCESS_RATE = 0.95  # 50% success rate
     MIN_LATENCY_MS = 50  # Minimum latency in milliseconds
     MAX_LATENCY_MS = 200  # Maximum latency in milliseconds
 
     @classmethod
     def _is_testing(cls) -> bool:
-        """Check if running in test environment."""
         # Check multiple test environment indicators
         return (
             "test" in sys.argv
@@ -45,7 +33,6 @@ class PurchaseService:
 
     @classmethod
     def _simulate_latency(cls) -> None:
-        """Simulate network/processing latency (skip in tests)."""
         if cls._is_testing():
             return
         latency_ms = random.randint(cls.MIN_LATENCY_MS, cls.MAX_LATENCY_MS)
@@ -54,17 +41,12 @@ class PurchaseService:
 
     @classmethod
     def _should_succeed(cls) -> bool:
-        """
-        Determine if operation should succeed.
-        
-        Always true in tests, 50% random otherwise.
-        """
         if cls._is_testing():
             return True
         return random.random() < cls.SUCCESS_RATE
 
     @transaction.atomic
-    def create_purchase(
+    def create_purchase(  # noqa: D102
         self,
         transaction_id: str,
         user_id: str,
@@ -73,24 +55,6 @@ class PurchaseService:
         amount: Decimal,
         quantity: int = 1,
     ) -> dict[str, Any]:
-        """
-        Process a purchase transaction using Saga pattern.
-        Returns 201 CREATED (success) or 409 CONFLICT (failure) randomly.
-
-        Note: User/product validation is the orchestrator's responsibility.
-        This service assumes pre-validated data from the Saga orchestrator.
-
-        Args:
-            transaction_id: Unique transaction ID from orchestrator
-            user_id: User/customer identifier
-            product_id: Product identifier
-            payment_id: Payment transaction identifier
-            amount: Total purchase amount (pre-calculated)
-            quantity: Number of items purchased (default: 1)
-
-        Returns:
-            Dict with status and purchase data or error info
-        """
         logger.info(
             "Processing purchase transaction: %s for user %s",
             transaction_id,
@@ -119,9 +83,7 @@ class PurchaseService:
                     }
                 # Return error with actual current status
                 else:
-                    msg = "Transaction already exists with status: {}".format(
-                        existing.status
-                    )
+                    msg = f"Transaction already exists with status: {existing.status}"  # noqa: E501
                     return {
                         "status": "error",
                         "message": msg,
@@ -185,26 +147,13 @@ class PurchaseService:
             )
             return {
                 "status": "error",
-                "message": "Internal error: {}".format(str(e)),
+                "message": f"Internal error: {str(e)}",
                 "error": "INTERNAL_ERROR",
             }
 
     @transaction.atomic
     def cancel_purchase(self, transaction_id: str) -> dict[str, Any]:
-        """
-        Cancel/compensate a purchase transaction.
-        Part of the Saga compensation flow.
-        Always returns 200 OK.
-
-        Args:
-            transaction_id: Transaction ID to cancel
-
-        Returns:
-            Dict with cancellation result (always success)
-        """
-        logger.info(
-            "Cancelling purchase transaction: %s", transaction_id
-        )
+        logger.info("Cancelling purchase transaction: %s", transaction_id)
 
         # Simulate network/processing latency
         self._simulate_latency()

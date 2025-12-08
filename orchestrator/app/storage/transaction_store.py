@@ -14,5 +14,8 @@ class TransactionStore:
     def get_all(self) -> list[TransactionDetail]:
         return list(self._transactions.values())
 
+    def count(self) -> int:
+        return len(self._transactions)
+
 
 transaction_store = TransactionStore()

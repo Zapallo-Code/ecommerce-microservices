@@ -21,70 +21,75 @@ Sistema de e-commerce distribuido implementando el patrón **Saga con Orquestaci
 
 ## 🏗 Arquitectura del Sistema
 
-El sistema está compuesto por **5 microservicios** independientes que se comunican a través de HTTP REST APIs, coordinados por un **orquestador Saga**:
+El sistema está compuesto por **5 microservicios** independientes que se comunican a través de HTTP REST APIs mediante **Traefik** como Reverse Proxy, coordinados por un **orquestador Saga**:
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATOR (FastAPI)                  │
-│                    Puerto: 8000                            │
-│                                                            │
-│  • Coordina transacciones distribuidas                     │
-│  • Ejecuta compensaciones en caso de fallo                 │
-│  • Mantiene estado de transacciones                        │
-└────────────────────────────────────────────────────────────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-        ▼                   ▼                   ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   CATALOG    │    │   PAYMENTS   │    │  INVENTORY   │
-│   (Django)   │    │   (Django)   │    │   (Django)   │
-│  Puerto:8001 │    │  Puerto:8002 │    │  Puerto:8003 │
-│              │    │              │    │              │
-│ • Productos  │    │ • Pagos      │    │ • Stock      │
-│   aleatorios │    │ • Reembolsos │    │ • Decrementos│
-│ • Siempre OK │    │ • 50% fallo  │    │ • 50% fallo  │
-└──────────────┘    └──────────────┘    └──────────────┘
-                            │
-                            ▼
-                    ┌──────────────┐
-                    │  PURCHASES   │
-                    │   (Django)   │
-                    │  Puerto:8004 │
-                    │              │
-                    │ • Compras    │
-                    │ • Cancela.   │
-                    │ • 50% fallo  │
-                    └──────────────┘
-                            │
-        ┌───────────────────┴───────────────────┐
-        │                                       │
-        ▼                                       ▼
-┌──────────────────────────────────────────────────┐
-│           PostgreSQL Database                    │
-│                                                  │
-│  • ms_catalog    (Productos)                     │
-│  • ms_payments   (Pagos)                         │
-│  • ms_inventory  (Inventario)                    │
-│  • ms_purchases  (Compras)                       │
-└──────────────────────────────────────────────────┘
+                         ┌─────────────────────────────────────┐
+                         │            TRAEFIK                  │
+                         │        Reverse Proxy                │
+                         │         Puerto: 80                  │
+                         │      Dashboard: 8080                │
+                         └───────────────┬─────────────────────┘
+                                         │
+        ┌────────────────────────────────┼────────────────────────────────┐
+        │                                │                                │
+        ▼                                ▼                                ▼
+   /api/catalog                    /api/saga                       /api/payments
+        │                                │                                │
+        ▼                                ▼                                ▼
+┌──────────────┐            ┌────────────────────┐            ┌──────────────┐
+│   CATALOG    │            │    ORCHESTRATOR    │            │   PAYMENTS   │
+│   (Django)   │            │     (FastAPI)      │            │   (Django)   │
+│  Puerto:8001 │            │    Puerto: 8000    │            │  Puerto:8002 │
+│              │            │                    │            │              │
+│ • Productos  │            │ • Coordina Saga    │            │ • Pagos      │
+│ • Siempre OK │            │ • Compensaciones   │            │ • Reembolsos │
+└──────────────┘            └────────────────────┘            │ • 5% fallo   │
+                                                              └──────────────┘
+        ┌────────────────────────────────┼────────────────────────────────┐
+        │                                                                 │
+        ▼                                                                 ▼
+   /api/inventory                                                  /api/purchases
+        │                                                                 │
+        ▼                                                                 ▼
+┌──────────────┐                                                  ┌──────────────┐
+│  INVENTORY   │                                                  │  PURCHASES   │
+│   (Django)   │                                                  │   (Django)   │
+│  Puerto:8003 │                                                  │  Puerto:8004 │
+│              │                                                  │              │
+│ • Stock      │                                                  │ • Compras    │
+│ • 30% fallo  │                                                  │ • Cancela.   │
+│ • Compensar  │                                                  │ • 5% fallo   │
+└──────────────┘                                                  └──────────────┘
+        │                                                                 │
+        └─────────────────────────┬───────────────────────────────────────┘
+                                  │
+                                  ▼
+                    ┌──────────────────────────────┐
+                    │       PostgreSQL             │
+                    │                              │
+                    │  • ms_catalog   (Productos)  │
+                    │  • ms_payments  (Pagos)      │
+                    │  • ms_inventory (Inventario) │
+                    │  • ms_purchases (Compras)    │
+                    └──────────────────────────────┘
 ```
 
 ### Flujo de una Transacción Saga
 
 ```
-1. Cliente → POST /saga/transaction → Orchestrator
-2. Orchestrator → GET /products/random/ → Catalog (siempre éxito)
-3. Orchestrator → POST /payments/ → Payments (50% fallo aleatorio)
-4. Si Payment OK → POST /inventory/decrease/ → Inventory (50% fallo)
-5. Si Inventory OK → POST /purchases/ → Purchases (50% fallo)
+1. Cliente → POST /api/saga/transaction → Traefik → Orchestrator
+2. Orchestrator → GET /api/catalog/products/random/ → Traefik → Catalog (siempre éxito)
+3. Orchestrator → POST /api/payments/payments/ → Traefik → Payments (5% fallo)
+4. Si Payment OK → POST /api/inventory/inventory/decrease/ → Traefik → Inventory (30% fallo)
+5. Si Inventory OK → POST /api/purchases/purchases/ → Traefik → Purchases (5% fallo)
 6. Si todo OK → TRANSACTION COMPLETED ✅
 
 En caso de fallo en cualquier paso:
-- COMPENSACIÓN: Orchestrator ejecuta rollback:
-  1. DELETE /purchases/{id}/cancel/ (si se creó)
-  2. POST /payments/{id}/refund/ (si se creó)
-  3. Inventory NO se compensa (según requerimientos)
+- COMPENSACIÓN: Orchestrator ejecuta rollback en orden reverso:
+  1. DELETE /api/purchases/purchases/{id}/cancel/ (si se creó)
+  2. POST /api/inventory/inventory/compensate/ (si se decrementó)
+  3. POST /api/payments/payments/{id}/refund/ (si se creó)
 ```
 
 ---
@@ -108,8 +113,8 @@ En caso de fallo en cualquier paso:
 
 - **Docker 24+** - Contenedorización
 - **Docker Compose** - Orquestación de contenedores
-- **Traefik 2.10** - Reverse proxy y API Gateway
-- **uv 0.9** - Gestor de paquetes Python (ultra-rápido)
+- **Traefik v3** - Reverse Proxy y Load Balancer
+- **uv** - Gestor de paquetes Python (ultra-rápido)
 - **Gunicorn** - WSGI server para Django
 - **Uvicorn** - ASGI server para FastAPI
 
@@ -164,10 +169,11 @@ orchestrator/
 #### Configuración (config.py):
 
 ```python
-CATALOG_URL = "http://catalog:8001"
-PAYMENTS_URL = "http://payments:8002"
-INVENTORY_URL = "http://inventory:8003"
-PURCHASES_URL = "http://purchases:8004"
+# Los servicios se comunican a través de Traefik
+CATALOG_URL = "http://traefik/api/catalog"
+PAYMENTS_URL = "http://traefik/api/payments"
+INVENTORY_URL = "http://traefik/api/inventory"
+PURCHASES_URL = "http://traefik/api/purchases"
 ```
 
 ---
@@ -186,8 +192,8 @@ PURCHASES_URL = "http://purchases:8004"
 
 #### Endpoints:
 
-- `GET /health/` - Health check
-- `GET /products/random/` - Obtener producto aleatorio (siempre éxito)
+- `GET /api/catalog/health/` - Health check
+- `GET /api/catalog/products/random/` - Obtener producto aleatorio (siempre éxito)
 
 #### Modelo de Datos:
 
@@ -230,16 +236,16 @@ class Product(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en creación de pagos
+- **5% de probabilidad de fallo aleatorio** en creación de pagos
 - Retorna 200 (éxito) o 409 (conflicto/error)
 - Implementa endpoint de compensación (refund)
-- Simula latencia de 0.1 a 0.3 segundos
+- Simula latencia de 0.5 a 2 segundos
 
 #### Endpoints:
 
-- `GET /health/` - Health check
-- `POST /payments/` - Crear pago (50% fallo aleatorio)
-- `POST /payments/{id}/refund/` - Reembolsar pago (compensación)
+- `GET /api/payments/payments/health/` - Health check
+- `POST /api/payments/payments/` - Crear pago (5% fallo aleatorio)
+- `POST /api/payments/payments/{id}/refund/` - Reembolsar pago (compensación)
 
 #### Modelo de Datos:
 
@@ -304,15 +310,16 @@ class Payment(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en decrementos
+- **30% de probabilidad de fallo aleatorio** (simula falta de stock)
 - Retorna 200 (éxito) o 409 (stock insuficiente)
-- **NO tiene endpoint de compensación** (según requerimientos)
-- Simula latencia de 0.1 a 0.3 segundos
+- Implementa endpoint de compensación para restaurar stock
+- Simula latencia de 0.1 a 0.8 segundos
 
 #### Endpoints:
 
-- `GET /health/` - Health check
-- `POST /inventory/decrease/` - Decrementar inventario (50% fallo)
+- `GET /api/inventory/health/` - Health check
+- `POST /api/inventory/inventory/decrease/` - Decrementar inventario (30% fallo)
+- `POST /api/inventory/inventory/compensate/` - Restaurar inventario (compensación)
 
 #### Modelo de Datos:
 
@@ -357,9 +364,7 @@ class Inventory(models.Model):
 #### Base de Datos:
 
 - **Nombre:** `ms_inventory`
-- **Tabla:** `inventory_inventory`
-
-**⚠️ Importante:** Este servicio NO implementa restauración de inventario en caso de fallo (según diseño del Saga).
+- **Tablas:** `inventory_inventory`, `inventory_inventoryoperation`
 
 ---
 
@@ -370,16 +375,16 @@ class Inventory(models.Model):
 
 #### Características:
 
-- **50% de probabilidad de fallo aleatorio** en creación
-- Retorna 200 (éxito) o 409 (conflicto)
+- **5% de probabilidad de fallo aleatorio** en creación
+- Retorna 201 (éxito) o 409 (conflicto)
 - Implementa endpoint de compensación (cancel)
-- Simula latencia de 0.1 a 0.3 segundos
+- Simula latencia de 0.05 a 0.2 segundos
 
 #### Endpoints:
 
-- `GET /health/` - Health check
-- `POST /purchases/` - Crear compra (50% fallo aleatorio)
-- `DELETE /purchases/{id}/cancel/` - Cancelar compra (compensación)
+- `GET /api/purchases/health/` - Health check
+- `POST /api/purchases/purchases/` - Crear compra (5% fallo aleatorio)
+- `DELETE /api/purchases/purchases/{transaction_id}/cancel/` - Cancelar compra (compensación)
 
 #### Modelo de Datos:
 
@@ -442,18 +447,19 @@ class Purchase(models.Model):
 
 ### ¿Qué es Traefik?
 
-**Traefik** es un reverse proxy y load balancer moderno diseñado específicamente para microservicios. En este proyecto, Traefik actúa como puerta de entrada única (API Gateway) que enruta las peticiones a los microservicios correspondientes.
+**Traefik** es un reverse proxy y load balancer moderno diseñado específicamente para microservicios. En este proyecto, Traefik actúa como puerta de entrada única que enruta las peticiones a los microservicios correspondientes.
 
 ### Configuración en el Proyecto
 
-Traefik está configurado en `docker-compose.prod.yml` y expone el puerto **80** como punto de entrada único al sistema.
+Traefik se despliega de forma externa y los servicios se conectan a la red `traefik-public`. El puerto **80** es el punto de entrada único al sistema.
 
 #### Características
 
 - ✅ **Auto-descubrimiento**: Detecta automáticamente los contenedores Docker
 - ✅ **Routing dinámico**: Enruta peticiones según etiquetas Docker
+- ✅ **Strip Prefix**: Elimina el prefijo `/api/service` antes de enviar al servicio
 - ✅ **Health checks**: Monitorea la salud de los servicios
-- ✅ **Dashboard**: Interfaz web para visualizar rutas y servicios
+- ✅ **Dashboard**: Interfaz web para visualizar rutas y servicios (puerto 8080)
 - ✅ **HTTPS/TLS**: Soporte para certificados SSL (configurable)
 
 ### Arquitectura con Traefik
@@ -472,50 +478,52 @@ Traefik está configurado en `docker-compose.prod.yml` y expone el puerto **80**
         ┌───────────────────┼───────────────────┐
         │                   │                   │
         ▼                   ▼                   ▼
-   /orchestrator       /catalog           /payments
+   /api/catalog        /api/saga          /api/payments
         │                   │                   │
         ▼                   ▼                   ▼
-   orchestrator:8000   catalog:8001      payments:8002
+   catalog:8001     orchestrator:8000    payments:8002
 
         ▼                   ▼
-   /inventory         /purchases
+   /api/inventory    /api/purchases
         │                   │
         ▼                   ▼
-   inventory:8003     purchases:8004
+   inventory:8003    purchases:8004
 ```
 
 ### Reglas de Enrutamiento
 
-Traefik enruta las peticiones según el path:
+Traefik enruta las peticiones según el path y elimina el prefijo antes de enviar al servicio:
 
-| Path Original                     | Redirige a                   | Servicio     |
-| --------------------------------- | ---------------------------- | ------------ |
-| `http://localhost/orchestrator/*` | `http://orchestrator:8000/*` | Orchestrator |
-| `http://localhost/catalog/*`      | `http://catalog:8001/*`      | Catalog      |
-| `http://localhost/payments/*`     | `http://payments:8002/*`     | Payments     |
-| `http://localhost/inventory/*`    | `http://inventory:8003/*`    | Inventory    |
-| `http://localhost/purchases/*`    | `http://purchases:8004/*`    | Purchases    |
+| Path Original                       | Se transforma en          | Servicio     |
+| ----------------------------------- | ------------------------- | ------------ |
+| `http://localhost/api/saga/*`       | `/saga/*`                 | Orchestrator |
+| `http://localhost/api/catalog/*`    | `/*`                      | Catalog      |
+| `http://localhost/api/payments/*`   | `/*`                      | Payments     |
+| `http://localhost/api/inventory/*`  | `/*`                      | Inventory    |
+| `http://localhost/api/purchases/*`  | `/*`                      | Purchases    |
 
 ### Etiquetas Docker (Labels)
 
 Cada servicio tiene etiquetas que Traefik lee para configurar el enrutamiento:
 
 ```yaml
-# Ejemplo: Orchestrator
+# Ejemplo: Catalog
 labels:
   - "traefik.enable=true"
-  - "traefik.http.routers.orchestrator.rule=PathPrefix(`/orchestrator`)"
-  - "traefik.http.routers.orchestrator.entrypoints=web"
-  - "traefik.http.services.orchestrator.loadbalancer.server.port=8000"
-  - "traefik.http.middlewares.orchestrator-stripprefix.stripprefix.prefixes=/orchestrator"
-  - "traefik.http.routers.orchestrator.middlewares=orchestrator-stripprefix"
+  - "traefik.docker.network=traefik-public"
+  - "traefik.http.routers.catalog.rule=PathPrefix(`/api/catalog`)"
+  - "traefik.http.routers.catalog.entrypoints=web"
+  - "traefik.http.services.catalog.loadbalancer.server.port=8001"
+  - "traefik.http.middlewares.catalog-strip.stripprefix.prefixes=/api/catalog"
+  - "traefik.http.routers.catalog.middlewares=catalog-strip"
 ```
 
 **Explicación:**
 
 - `traefik.enable=true` - Habilita Traefik para este servicio
-- `PathPrefix(/orchestrator)` - Coincide con URLs que empiezan con /orchestrator
-- `stripprefix` - Remueve el prefijo antes de enviar al servicio backend
+- `traefik.docker.network=traefik-public` - Red Docker a usar
+- `PathPrefix(/api/catalog)` - Coincide con URLs que empiezan con /api/catalog
+- `stripprefix.prefixes=/api/catalog` - Elimina el prefijo antes de enviar al servicio
 - `loadbalancer.server.port` - Puerto interno del servicio
 
 ### Dashboard de Traefik
@@ -531,24 +539,37 @@ El dashboard muestra:
 
 ### Ejemplos de Uso con Traefik
 
-#### Sin Traefik (acceso directo):
+#### Probar transacción (endpoint principal):
 
-```bash
-# Acceso directo a cada servicio
-curl http://localhost:8000/saga/transaction  # Orchestrator
-curl http://localhost:8001/products/random/  # Catalog
-curl http://localhost:8002/health/           # Payments
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost/api/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
 ```
 
-#### Con Traefik (a través del puerto 80):
+```bash
+# Bash/curl
+curl -X POST http://localhost/api/saga/transaction \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "1", "amount": 100}'
+```
+
+#### Verificar health de servicios:
 
 ```bash
-# Todo a través de Traefik en puerto 80
-curl http://localhost/orchestrator/saga/transaction
-curl http://localhost/catalog/products/random/
-curl http://localhost/payments/health/
-curl http://localhost/inventory/health/
-curl http://localhost/purchases/health/
+# Health del saga
+curl http://localhost/api/saga/
+
+# Health de catalog
+curl http://localhost/api/catalog/health/
+
+# Health de payments
+curl http://localhost/api/payments/payments/health/
+
+# Health de inventory
+curl http://localhost/api/inventory/health/
+
+# Health de purchases
+curl http://localhost/api/purchases/health/
 ```
 
 ### Ventajas de Usar Traefik
@@ -640,8 +661,8 @@ Creación (orden forward):
 
 Compensación (orden reverso):
 1. Purchase → (no se creó, skip)
-2. Payment → REFUND ✅
-3. Inventory → (no se compensa según diseño)
+2. Inventory → COMPENSATE (restaurar stock) ✅
+3. Payment → REFUND ✅
 ```
 
 ### Estados de Transacción
@@ -651,10 +672,14 @@ Compensación (orden reverso):
 
 ### Probabilidades
 
-Dado que cada servicio tiene 50% de fallo (excepto catalog):
+Dado que cada servicio tiene diferentes tasas de fallo (excepto catalog que siempre es OK):
 
-- **Probabilidad de éxito:** 0.5 × 0.5 × 0.5 = **12.5%**
-- **Probabilidad de fallo:** **87.5%**
+- **Payments:** 95% éxito
+- **Inventory:** 70% éxito  
+- **Purchases:** 95% éxito
+
+**Probabilidad de éxito total:** 0.95 × 0.70 × 0.95 = **63.2%**  
+**Probabilidad de fallo:** **36.8%**
 
 ---
 
@@ -699,7 +724,15 @@ Dado que cada servicio tiene 50% de fallo (excepto catalog):
 - **RAM:** Mínimo 4 GB (Recomendado 8 GB)
 - **Disco:** Mínimo 5 GB libres
 - **CPU:** 2 cores mínimo
-- **Puertos disponibles:** 80 (Traefik), 8080 (Traefik Dashboard), 8000-8004 (microservicios), 5432 (PostgreSQL)
+- **Puertos disponibles:** 80 (Traefik), 8080 (Traefik Dashboard)
+
+### Red de Traefik
+
+El proyecto requiere una red externa de Docker llamada `traefik-public`. Si no existe, créala:
+
+```bash
+docker network create traefik-public
+```
 
 ---
 
@@ -751,68 +784,94 @@ Deberías ver:
 
 ### Variables de Entorno
 
-El sistema usa configuración por defecto en `docker-compose.prod.yml`:
+El proyecto incluye archivos de ejemplo para configurar las variables de entorno:
 
-#### Base de Datos (PostgreSQL)
+- `.env.example` - Plantilla para desarrollo
+- `.env.example.prod` - Plantilla para producción
 
-```yaml
-POSTGRES_USER: ecommerce_user
-POSTGRES_PASSWORD: ecommerce_pass
-POSTGRES_MULTIPLE_DATABASES: ms_catalog,ms_payments,ms_inventory,ms_purchases
-```
-
-#### Servicios Django
-
-```yaml
-DATABASE_HOST: postgres
-DATABASE_PORT: 5432
-DATABASE_USER: ecommerce_user
-DATABASE_PASSWORD: ecommerce_pass
-DJANGO_SETTINGS_MODULE: main.settings # o config.settings
-```
-
-#### Orchestrator (FastAPI)
-
-```yaml
-CATALOG_URL: http://catalog:8001
-PAYMENTS_URL: http://payments:8002
-INVENTORY_URL: http://inventory:8003
-PURCHASES_URL: http://purchases:8004
-```
-
-### Personalización (Opcional)
-
-Si necesitas cambiar configuraciones, crea un archivo `.env`:
+#### Configuración Rápida
 
 ```bash
-# .env
-POSTGRES_PASSWORD=mi_password_seguro
-CATALOG_PORT=9001
-PAYMENTS_PORT=9002
-# etc...
+# Desarrollo
+cp .env.example .env
+
+# Producción
+cp .env.example.prod .env.prod
+```
+
+#### Variables Principales
+
+| Variable | Descripción | Valor por defecto |
+|----------|-------------|-------------------|
+| `POSTGRES_USER` | Usuario PostgreSQL | postgres |
+| `POSTGRES_PASSWORD` | Contraseña PostgreSQL | postgres |
+| `CATALOG_SECRET_KEY` | Secret key Django Catalog | (generado) |
+| `PAYMENTS_SECRET_KEY` | Secret key Django Payments | (generado) |
+| `INVENTORY_SECRET_KEY` | Secret key Django Inventory | (generado) |
+| `PURCHASES_SECRET_KEY` | Secret key Django Purchases | (generado) |
+| `LOG_LEVEL` | Nivel de logging | INFO |
+| `CORS_ALLOWED_ORIGINS` | Orígenes CORS permitidos | * |
+
+#### Generar Secret Keys para Producción
+
+```bash
+python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 ```
 
 ---
 
 ## 🚀 Ejecución
 
-### Opción 1: Docker Compose (Producción) - **RECOMENDADO**
+### Requisitos Previos
 
-#### Iniciar todos los servicios:
+1. Crear la red de Traefik (si no existe):
 
 ```bash
-docker compose -f docker-compose.prod.yml up --build -d
+docker network create traefik-public
+```
+
+2. Tener Traefik corriendo (ver sección Traefik más abajo)
+
+### Opción 1: Docker Compose Desarrollo
+
+```bash
+# Copiar configuración
+cp .env.example .env
+
+# Iniciar servicios
+docker compose up --build -d
+
+# Ver logs
+docker compose logs -f
+```
+
+### Opción 2: Docker Compose Producción - **RECOMENDADO**
+
+```bash
+# Copiar configuración de producción
+cp .env.example.prod .env.prod
+
+# Editar .env.prod con valores seguros
+# nano .env.prod
+
+# Iniciar servicios
+docker compose -f docker-compose.prod.yml --env-file .env.prod up --build -d
 ```
 
 **Explicación de flags:**
 
 - `-f docker-compose.prod.yml` - Usa el archivo de producción
+- `--env-file .env.prod` - Usa variables de entorno de producción
 - `--build` - Reconstruye las imágenes
 - `-d` - Modo detached (background)
 
 #### Verificar estado de servicios:
 
 ```bash
+# Desarrollo
+docker compose ps
+
+# Producción
 docker compose -f docker-compose.prod.yml ps
 ```
 
@@ -838,12 +897,16 @@ docker logs ecommerce-orchestrator -f
 docker logs ecommerce-payments -f
 
 # Logs de todos los servicios
-docker compose -f docker-compose.prod.yml logs -f
+docker compose logs -f
 ```
 
 #### Detener servicios:
 
 ```bash
+# Desarrollo
+docker compose down
+
+# Producción
 docker compose -f docker-compose.prod.yml down
 ```
 
@@ -853,29 +916,67 @@ docker compose -f docker-compose.prod.yml down
 docker compose -f docker-compose.prod.yml down -v
 ```
 
-### Opción 2: Docker Compose (Desarrollo)
+### Configurar Traefik
+
+Si no tienes Traefik instalado, puedes usar el siguiente docker-compose:
+
+```yaml
+# traefik-compose.yml
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true
+```
 
 ```bash
-docker compose up --build
+docker compose -f traefik-compose.yml up -d
 ```
 
 ### Verificación de Salud
 
-Verifica que todos los servicios estén respondiendo:
+Para verificar que el sistema funciona correctamente:
+
+```powershell
+# PowerShell - Health check del saga
+Invoke-RestMethod -Uri "http://localhost/api/saga/"
+```
 
 ```bash
-# Health check de cada servicio
-curl http://localhost:8001/health/  # Catalog
-curl http://localhost:8002/health/  # Payments
-curl http://localhost:8003/health/  # Inventory
-curl http://localhost:8004/health/  # Purchases
+# Bash - Health check del saga
+curl http://localhost/api/saga/
 ```
 
-Todos deben retornar algo similar a:
+Ejecutar una transacción de prueba:
 
-```json
-{ "status": "healthy", "service": "catalog" }
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost/api/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
 ```
+
+```bash
+# Bash
+curl -X POST http://localhost/api/saga/transaction \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "1", "amount": 100}'
+```
+
+Deberías recibir una respuesta con `status: "COMPLETED"` o `status: "FAILED"` (con compensaciones ejecutadas).
 
 ### Creación de Migraciones (Primera Ejecución)
 
@@ -903,150 +1004,93 @@ docker exec ecommerce-purchases python manage.py migrate
 
 ## 📡 API Endpoints
 
-> **Nota:** Todos los endpoints se pueden acceder de dos formas:
->
-> 1. **Acceso directo**: `http://localhost:{puerto}/endpoint`
-> 2. **A través de Traefik**: `http://localhost/{servicio}/endpoint`
+### Endpoint Principal - Transacción Saga
 
-### Orchestrator (Puerto 8000)
+Este es el único endpoint que necesitas para probar el sistema completo:
 
-#### 1. Iniciar Transacción Saga
+#### POST /api/saga/transaction
 
-**Endpoint:** `POST /saga/transaction`
+**URL:** `http://localhost/api/saga/transaction`
 
 **Request Body:**
-
 ```json
 {
-  "user_id": "user-123",
-  "product_id": 1,
-  "amount": 99.99
+  "user_id": "1",
+  "amount": 100
 }
+```
+
+**Ejemplo con PowerShell:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost/api/saga/transaction" -Method POST -ContentType "application/json" -Body '{"user_id": "1", "amount": 100}'
 ```
 
 **Ejemplo con curl:**
-
 ```bash
-# Acceso directo
-curl -X POST http://localhost:8000/saga/transaction \
+curl -X POST http://localhost/api/saga/transaction \
   -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user-123",
-    "product_id": 1,
-    "amount": 99.99
-  }'
-
-# A través de Traefik
-curl -X POST http://localhost/orchestrator/saga/transaction \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user-123",
-    "product_id": 1,
-    "amount": 99.99
-  }'
+  -d '{"user_id": "1", "amount": 100}'
 ```
 
-**Respuesta Exitosa (200):**
-
+**Respuesta Exitosa (COMPLETED):**
 ```json
 {
   "transaction_id": "e8065740-3844-4026-b366-be1d15580f64",
   "status": "COMPLETED",
-  "message": "Transaction completed successfully",
-  "details": {
-    "user_id": "user-123",
-    "product_id": "1",
-    "payment_id": "35",
-    "amount": 99.99
+  "steps": {
+    "catalog": {"status": "success", "product": {...}},
+    "payment": {"status": "success", "payment_id": 35},
+    "inventory": {"status": "success"},
+    "purchase": {"status": "success", "purchase_id": 12}
   },
-  "timestamp": "2025-11-14T04:09:06.888287"
+  "timestamp": "2025-12-01T04:09:06.888287"
 }
 ```
 
-**Respuesta Compensada (409):**
-
+**Respuesta con Fallo (FAILED - con compensación):**
 ```json
 {
   "transaction_id": "24f59cbe-0b89-427c-8180-2c3b6c8967b8",
-  "status": "COMPENSATED",
-  "message": "Transaction failed and was reverted",
-  "details": {
-    "user_id": "user-123",
-    "product_id": null,
-    "payment_id": null,
-    "error": "409: payments conflict: Error processing payment"
-  },
-  "timestamp": "2025-11-14T04:06:24.487881"
+  "status": "FAILED",
+  "failed_step": "inventory",
+  "error": "Sin stock disponible",
+  "compensations": ["payment refunded"],
+  "timestamp": "2025-12-01T04:06:24.487881"
 }
 ```
 
-#### 2. Consultar Estado de Transacción
-
-**Endpoint:** `GET /saga/status/{transaction_id}`
-
-**Ejemplo:**
+#### GET /api/saga/ - Health Check
 
 ```bash
-curl http://localhost:8000/saga/status/e8065740-3844-4026-b366-be1d15580f64
+curl http://localhost/api/saga/
 ```
 
 **Respuesta:**
-
 ```json
 {
-  "transaction_id": "e8065740-3844-4026-b366-be1d15580f64",
-  "status": "COMPLETED",
-  "user_id": "user-123",
-  "product_id": "1",
-  "payment_id": "35",
-  "inventory_updated": true,
-  "purchase_registered": true,
-  "amount": 99.99,
-  "created_at": "2025-11-14T04:09:03.629029",
-  "completed_at": "2025-11-14T04:09:06.888287",
-  "error_message": null
+  "status": "healthy",
+  "service": "saga-orchestrator"
 }
 ```
 
-#### 3. Listar Todas las Transacciones
-
-**Endpoint:** `GET /saga/transactions`
-
-**Ejemplo:**
+#### GET /api/saga/status/{transaction_id} - Consultar Estado
 
 ```bash
-curl http://localhost:8000/saga/transactions | jq
+curl http://localhost/api/saga/status/e8065740-3844-4026-b366-be1d15580f64
 ```
 
-**Respuesta:**
+#### GET /api/saga/transactions - Listar Transacciones
 
-```json
-{
-  "total": 16,
-  "transactions": [
-    {
-      "transaction_id": "...",
-      "status": "COMPLETED",
-      "user_id": "user-123",
-      ...
-    },
-    ...
-  ]
-}
+```bash
+curl http://localhost/api/saga/transactions
 ```
 
 ### Catalog (Puerto 8001)
 
-#### 1. Health Check
+#### Obtener Producto Aleatorio
 
 ```bash
-curl http://localhost:8001/health/
-```
-
-#### 2. Obtener Producto Aleatorio
-
-```bash
-curl http://localhost:8001/products/random/
+curl http://localhost/api/catalog/products/random/
 ```
 
 **Respuesta (siempre 200):**
@@ -1064,16 +1108,10 @@ curl http://localhost:8001/products/random/
 
 ### Payments (Puerto 8002)
 
-#### 1. Health Check
+#### 1. Crear Pago (5% fallo)
 
 ```bash
-curl http://localhost:8002/health/
-```
-
-#### 2. Crear Pago (50% fallo)
-
-```bash
-curl -X POST http://localhost:8002/payments/ \
+curl -X POST http://localhost/api/payments/payments/ \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "user-123",
@@ -1082,97 +1120,42 @@ curl -X POST http://localhost:8002/payments/ \
   }'
 ```
 
-**Respuesta Exitosa (200):**
-
-```json
-{
-  "payment_id": 42,
-  "status": "success",
-  "message": "Payment processed successfully"
-}
-```
-
-**Respuesta Error (409):**
-
-```json
-{
-  "payment_id": 43,
-  "status": "error",
-  "message": "Error processing payment"
-}
-```
-
-#### 3. Reembolsar Pago (Compensación)
+#### 2. Reembolsar Pago (Compensación)
 
 ```bash
-curl -X POST http://localhost:8002/payments/42/refund/
-```
-
-**Respuesta:**
-
-```json
-{
-  "status": "compensated",
-  "message": "Payment refunded successfully",
-  "payment_id": 42,
-  "transaction_id": "txn-456",
-  "user_id": "user-123",
-  "amount": "99.99"
-}
+curl -X POST http://localhost/api/payments/payments/42/refund/
 ```
 
 ### Inventory (Puerto 8003)
 
-#### 1. Health Check
+#### 1. Decrementar Inventario (30% fallo)
 
 ```bash
-curl http://localhost:8003/health/
-```
-
-#### 2. Decrementar Inventario (50% fallo)
-
-```bash
-curl -X POST http://localhost:8003/inventory/decrease/ \
+curl -X POST http://localhost/api/inventory/inventory/decrease/ \
   -H "Content-Type: application/json" \
   -d '{
     "product_id": 1,
     "quantity": 2,
-    "transaction_id": "txn-456"
+    "operation_id": "550e8400-e29b-41d4-a716-446655440000"
   }'
 ```
 
-**Respuesta Exitosa (200):**
+#### 2. Compensar Inventario (Restaurar stock)
 
-```json
-{
-  "status": "success",
-  "message": "Inventory decreased successfully",
-  "product_id": "1",
-  "remaining_quantity": 98
-}
-```
-
-**Respuesta Error (409):**
-
-```json
-{
-  "status": "error",
-  "message": "Insufficient stock for product 1 (random failure)"
-}
+```bash
+curl -X POST http://localhost/api/inventory/inventory/compensate/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation_id": "550e8400-e29b-41d4-a716-446655440000"
+  }'
 ```
 
 ### Purchases (Puerto 8004)
 
-#### 1. Health Check
+#### 1. Crear Compra (5% fallo)
 
 ```bash
-curl http://localhost:8004/health/
-```
-
-#### 2. Crear Compra (50% fallo)
-
-```bash
-curl -X POST http://localhost:8004/purchases/ \
+curl -X POST http://localhost/api/purchases/purchases/ \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "user-123",
@@ -1183,39 +1166,10 @@ curl -X POST http://localhost:8004/purchases/ \
   }'
 ```
 
-**Respuesta Exitosa (200):**
-
-```json
-{
-  "purchase_id": 15,
-  "status": "success"
-}
-```
-
-**Respuesta Error (409):**
-
-```json
-{
-  "status": "error",
-  "message": "Purchase failed",
-  "error": "CONFLICT"
-}
-```
-
-#### 3. Cancelar Compra (Compensación)
+#### 2. Cancelar Compra (Compensación)
 
 ```bash
-curl -X DELETE http://localhost:8004/purchases/15/cancel/
-```
-
-**Respuesta:**
-
-```json
-{
-  "status": "success",
-  "message": "Purchase cancelled successfully",
-  "transaction_id": "15"
-}
+curl -X DELETE http://localhost/api/purchases/purchases/txn-456/cancel/
 ```
 
 ---
@@ -1242,17 +1196,22 @@ curl -X DELETE http://localhost:8004/purchases/15/cancel/
 
 ### Comunicación entre Servicios
 
+Todos los servicios se comunican a través de Traefik:
+
 ```
-HTTP REST (Síncrono)
+HTTP REST (Síncrono via Traefik)
 ┌─────────────┐
 │ Orchestrator│
 └──────┬──────┘
        │
-       ├─── HTTP POST ──→ Payments
-       ├─── HTTP POST ──→ Inventory
-       ├─── HTTP POST ──→ Purchases
-       └─── HTTP GET ───→ Catalog
+       └─── http://traefik/api/* ───→ Traefik ───→ Services
 ```
+
+El orchestrator usa las siguientes URLs para comunicarse:
+- `http://traefik/api/catalog` → Catalog service
+- `http://traefik/api/payments` → Payments service
+- `http://traefik/api/inventory` → Inventory service
+- `http://traefik/api/purchases` → Purchases service
 
 ### Gestión de Transacciones
 

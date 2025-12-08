@@ -14,7 +14,6 @@ class ServiceClient:
         self.timeout = settings.HTTP_TIMEOUT
 
     def _get_service_url(self, service_name: str) -> str:
-        """Get service URL from settings."""
         if service_name not in settings.SERVICES:
             raise ValueError(f"Unknown service: {service_name}")
         return settings.SERVICES[service_name]
@@ -26,7 +25,6 @@ class ServiceClient:
         url: str,
         data: dict[str, object] | None = None,
     ) -> httpx.Response:
-        """Make HTTP request based on method."""
         method_map = {
             "GET": lambda: client.get(url),
             "POST": lambda: client.post(url, json=data),
@@ -40,7 +38,6 @@ class ServiceClient:
         return await method_map[method]()
 
     def _extract_error_detail(self, response: httpx.Response) -> str:
-        """Extract error detail from response."""
         try:
             error_json = response.json()
             return error_json.get("error", error_json.get("message", response.text))
@@ -50,7 +47,6 @@ class ServiceClient:
     def _handle_http_error(
         self, service_name: str, error: httpx.HTTPStatusError
     ) -> None:
-        """Handle HTTP status errors consistently."""
         status_code = error.response.status_code
         error_detail = self._extract_error_detail(error.response)
 
@@ -69,7 +65,6 @@ class ServiceClient:
         data: dict[str, object] | None = None,
         timeout: float | None = None,
     ) -> dict[str, object]:
-        """Call a microservice with the specified method and data."""
         url = f"{self._get_service_url(service_name)}{endpoint}"
         request_timeout = timeout or self.timeout
 

@@ -1,12 +1,12 @@
-"""Health check view for the purchases microservice."""
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 
-from django.http import JsonResponse
-from django.views import View
 
+class HealthCheckView(APIView):
 
-class HealthCheckView(View):
-    """Simple health check endpoint."""
-
-    def get(self, _request) -> JsonResponse:
-        """Return a simple health check response."""
-        return JsonResponse({"status": "healthy", "service": "purchases"})
+    def get(self, request):
+        return Response(
+            {"status": "healthy", "service": "purchases"},
+            status=status.HTTP_200_OK,
+        )

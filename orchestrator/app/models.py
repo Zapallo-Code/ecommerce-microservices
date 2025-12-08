@@ -30,6 +30,7 @@ class TransactionDetail(BaseModel):
     user_id: str
     product_id: str | None = None
     payment_id: str | None = None
+    inventory_operation_id: str | None = None  # For inventory compensation
     inventory_updated: bool = False
     purchase_registered: bool = False
     amount: float

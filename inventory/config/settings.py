@@ -1,7 +1,3 @@
-"""
-Django settings for inventory microservice.
-"""
-
 import os
 from pathlib import Path
 
@@ -11,9 +7,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-key-only-for-developme
 
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 
-# Application definition
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -55,19 +51,32 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "inventory_db"),
-        "USER": os.getenv("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
-        "HOST": os.getenv("DATABASE_HOST", "postgres"),
-        "PORT": os.getenv("DATABASE_PORT", "5432"),
-    }
-}
 
-# Password validation
+# Database configuration - PostgreSQL for production, SQLite for development
+USE_SQLITE = os.getenv("USE_SQLITE", "True") == "True"
+
+if USE_SQLITE:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+            "ATOMIC_REQUESTS": True,
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "ms_inventory"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "postgres"),
+            "HOST": os.getenv("DATABASE_HOST", "localhost"),
+            "PORT": os.getenv("DATABASE_PORT", "5432"),
+            "ATOMIC_REQUESTS": True,
+        }
+    }
+
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
@@ -77,26 +86,26 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# Internationalization
+
 LANGUAGE_CODE = "es-ar"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# Static files
+
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# REST Framework
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }
 
-# Inventory service settings
-NO_STOCK_RATE = float(os.getenv("NO_STOCK_RATE", "0.1"))
+
+NO_STOCK_RATE = float(os.getenv("NO_STOCK_RATE", "0.3"))
 SIMULATE_LATENCY = os.getenv("SIMULATE_LATENCY", "True") == "True"
 MIN_LATENCY_MS = float(os.getenv("MIN_LATENCY_MS", "100"))
 MAX_LATENCY_MS = float(os.getenv("MAX_LATENCY_MS", "800"))

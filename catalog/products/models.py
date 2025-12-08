@@ -1,17 +1,7 @@
-"""
-Product model for catalog microservice.
-Simplified to essential fields only.
-"""
-
 from django.db import models
 
 
 class Product(models.Model):
-    """
-    Product entity for catalog microservice.
-    Stores basic product information for the Saga pattern.
-    """
-
     name = models.CharField(max_length=255)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)

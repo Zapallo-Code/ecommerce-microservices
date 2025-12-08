@@ -1,9 +1,3 @@
-"""
-Catalog microservice views.
-Simplified implementation following KISS and SOLID principles.
-Uses dependency injection for better testability and maintainability.
-"""
-
 import logging
 import random
 import time
@@ -19,35 +13,18 @@ logger = logging.getLogger(__name__)
 
 
 class RandomProductView(APIView):
-    """
-    GET /products/random/
-
-    Returns a random product with random data.
-    Always returns status 200.
-    No compensation required for this service.
-
-    Simulates latency for realistic distributed system behavior.
-    Uses dependency injection for ProductService.
-    """
-    
     def __init__(self, service: IProductService = None, **kwargs):
-        """
-        Initialize view with injected service.
-        
-        Args:
-            service: ProductService instance (defaults to ProductService())
-        """
         super().__init__(**kwargs)
         self.service = service or ProductService()
 
+    def post(self, request):
+        logger.info(f"Random product request received with data: {request.data}")
+        return self.get(request)
+
     def get(self, request):
-        """
-        Returns a random product.
-        Always succeeds (status 200).
-        """
         start_time = time.time()
         logger.info("Random product request received")
-        
+
         try:
             # Simulate latency (0.1 to 0.5 seconds)
             latency = random.uniform(0.1, 0.5)
@@ -78,11 +55,14 @@ class RandomProductView(APIView):
             # Return product data using serializer
             serializer = ProductRandomSerializer(product)
             return Response(serializer.data, status=status.HTTP_200_OK)
-            
+
         except DatabaseError as e:
             logger.error(f"Database error in random product: {str(e)}", exc_info=True)
             return Response(
-                {"error": "Database error occurred", "detail": "Unable to retrieve product"},
+                {
+                    "error": "Database error occurred",
+                    "detail": "Unable to retrieve product",
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception as e:

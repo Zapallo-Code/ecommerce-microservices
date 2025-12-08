@@ -1,22 +1,16 @@
-"""
-Integration tests for the purchases service.
-Tests complete workflows and interactions between components.
-"""
-
-from django.test import TestCase, Client
-from django.urls import reverse
-from app.models.purchase import Purchase
 import json
+
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from app.models.purchase import Purchase
 
 
 class PurchaseIntegrationTests(TestCase):
-    """Integration tests for the purchases service."""
-
     def setUp(self):
         self.client = Client()
 
     def test_purchase_lifecycle(self):
-        """Test complete purchase lifecycle: create -> cancel."""
         # 1. Create purchase
         create_data = {
             "transaction_id": "lifecycle-test-001",
@@ -42,7 +36,10 @@ class PurchaseIntegrationTests(TestCase):
 
         # 2. Cancel purchase
         cancel_response = self.client.delete(
-            reverse("purchase-cancel", kwargs={"transaction_id": "lifecycle-test-001"})
+            reverse(
+                "purchase-cancel",
+                kwargs={"transaction_id": "lifecycle-test-001"},
+            )
         )
 
         self.assertEqual(cancel_response.status_code, 200)
@@ -52,7 +49,6 @@ class PurchaseIntegrationTests(TestCase):
         self.assertEqual(purchase.status, Purchase.STATUS_CANCELLED)
 
     def test_multiple_purchases_same_user(self):
-        """Test creating multiple purchases for the same user."""
         base_data = {
             "user_id": "user-multi",
             "product_id": "prod-456",
@@ -75,7 +71,6 @@ class PurchaseIntegrationTests(TestCase):
         self.assertEqual(purchases.count(), 3)
 
     def test_purchases_urls_configured(self):
-        """Test that all purchase URLs are properly configured."""
         # Health check
         health_response = self.client.get(reverse("health-check"))
         self.assertNotEqual(health_response.status_code, 404)
@@ -89,7 +84,6 @@ class PurchaseIntegrationTests(TestCase):
         self.assertNotEqual(create_response.status_code, 404)
 
     def test_purchase_data_integrity(self):
-        """Test that purchase data maintains integrity."""
         data = {
             "transaction_id": "integrity-test",
             "user_id": "user-integrity",
